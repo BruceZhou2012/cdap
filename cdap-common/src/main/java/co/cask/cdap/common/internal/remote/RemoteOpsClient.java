@@ -1,20 +1,20 @@
 /*
-* Copyright © 2016 Cask Data, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License"); you may not
-* use this file except in compliance with the License. You may obtain a copy of
-* the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-* WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-* License for the specific language governing permissions and limitations under
-* the License.
-*/
+ * Copyright © 2016 Cask Data, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 
-package co.cask.cdap.internal.app.store.remote;
+package co.cask.cdap.common.internal.remote;
 
 import co.cask.cdap.common.conf.CConfiguration;
 import co.cask.cdap.common.conf.Constants;
@@ -54,7 +54,7 @@ import javax.annotation.Nullable;
 /**
  * Common HTTP client functionality for remote operations from programs.
  */
-class RemoteOpsClient {
+public class RemoteOpsClient {
 
   private static final Gson GSON = new GsonBuilder()
     .registerTypeAdapter(BasicThrowable.class, new BasicThrowableCodec())
@@ -66,7 +66,7 @@ class RemoteOpsClient {
   private final HttpRequestConfig httpRequestConfig;
 
   @Inject
-  RemoteOpsClient(CConfiguration cConf, final DiscoveryServiceClient discoveryClient) {
+  public RemoteOpsClient(CConfiguration cConf, final DiscoveryServiceClient discoveryClient) {
     this.endpointStrategySupplier = Suppliers.memoize(new Supplier<EndpointStrategy>() {
       @Override
       public EndpointStrategy get() {

@@ -44,12 +44,14 @@ import co.cask.cdap.internal.app.runtime.artifact.Artifacts;
 import co.cask.cdap.internal.test.AppJarHelper;
 import co.cask.cdap.internal.test.PluginJarHelper;
 import co.cask.cdap.proto.DatasetInstanceConfiguration;
+import co.cask.cdap.proto.DatasetSpecificationSummary;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
 import co.cask.cdap.proto.artifact.AppRequest;
 import co.cask.cdap.proto.artifact.ArtifactRange;
 import co.cask.cdap.proto.id.ApplicationId;
 import co.cask.cdap.proto.id.ArtifactId;
+import co.cask.cdap.proto.id.DatasetId;
 import co.cask.cdap.proto.id.Ids;
 import co.cask.cdap.proto.id.NamespaceId;
 import co.cask.cdap.test.remote.RemoteApplicationManager;
@@ -58,6 +60,7 @@ import co.cask.cdap.test.remote.RemoteStreamManager;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.io.Files;
 import com.google.common.io.InputSupplier;
 import com.google.common.io.Resources;
@@ -79,6 +82,7 @@ import java.net.JarURLConnection;
 import java.net.URL;
 import java.sql.Connection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.jar.Manifest;
@@ -404,6 +408,11 @@ public class IntegrationTestManager implements TestManager {
   }
 
   @Override
+  public void removeDatasetInstance(DatasetId datasetId) throws Exception {
+    datasetClient.delete(datasetId.toId());
+  }
+
+  @Override
   public <T> DataSetManager<T> getDataset(Id.Namespace namespace, String datasetInstanceName) throws Exception {
     throw new UnsupportedOperationException();
   }
@@ -434,6 +443,15 @@ public class IntegrationTestManager implements TestManager {
   @Override
   public void deleteAllApplications(NamespaceId namespaceId) throws Exception {
     applicationClient.deleteAll(namespaceId.toId());
+  }
+
+  @Override
+  public List<DatasetId> listDatasets(NamespaceId namespaceId) throws Exception {
+    ImmutableList.Builder<DatasetId> result = ImmutableList.builder();
+    for (DatasetSpecificationSummary summary : datasetClient.list(namespaceId.toId())) {
+      result.add(namespaceId.dataset(summary.getName()));
+    }
+    return result.build();
   }
 
   /**

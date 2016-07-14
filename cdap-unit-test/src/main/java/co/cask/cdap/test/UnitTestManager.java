@@ -21,6 +21,7 @@ import co.cask.cdap.api.annotation.Beta;
 import co.cask.cdap.api.app.Application;
 import co.cask.cdap.api.artifact.ArtifactVersion;
 import co.cask.cdap.api.dataset.DatasetAdmin;
+import co.cask.cdap.api.dataset.DatasetManagementException;
 import co.cask.cdap.api.dataset.DatasetProperties;
 import co.cask.cdap.api.dataset.module.DatasetModule;
 import co.cask.cdap.api.plugin.PluginClass;
@@ -41,6 +42,7 @@ import co.cask.cdap.internal.app.runtime.artifact.ArtifactRepository;
 import co.cask.cdap.internal.app.runtime.artifact.Artifacts;
 import co.cask.cdap.internal.test.AppJarHelper;
 import co.cask.cdap.internal.test.PluginJarHelper;
+import co.cask.cdap.proto.DatasetSpecificationSummary;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
 import co.cask.cdap.proto.artifact.AppRequest;
@@ -48,6 +50,7 @@ import co.cask.cdap.proto.artifact.ArtifactRange;
 import co.cask.cdap.proto.artifact.ArtifactSummary;
 import co.cask.cdap.proto.id.ApplicationId;
 import co.cask.cdap.proto.id.ArtifactId;
+import co.cask.cdap.proto.id.DatasetId;
 import co.cask.cdap.proto.id.Ids;
 import co.cask.cdap.proto.id.NamespaceId;
 import co.cask.cdap.test.internal.ApplicationManagerFactory;
@@ -60,6 +63,7 @@ import co.cask.tephra.TransactionSystemClient;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 import com.google.common.reflect.TypeToken;
@@ -80,6 +84,7 @@ import java.sql.DriverManager;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.jar.Manifest;
 import javax.annotation.Nullable;
@@ -367,6 +372,10 @@ public class UnitTestManager implements TestManager {
     return addDatasetInstance(namespace, datasetTypeName, datasetInstanceName, DatasetProperties.EMPTY);
   }
 
+  @Override
+  public final void removeDatasetInstance(DatasetId datasetId) throws Exception {
+    datasetFramework.deleteInstance(datasetId.toId());
+  }
   /**
    * Gets Dataset manager of Dataset instance of type <T>
    * @param datasetInstanceName - instance name of dataset
@@ -456,6 +465,15 @@ public class UnitTestManager implements TestManager {
   @Override
   public void deleteAllApplications(NamespaceId namespaceId) throws Exception {
     appFabricClient.deleteAllApplications(namespaceId);
+  }
+
+  @Override
+  public List<DatasetId> listDatasets(NamespaceId namespaceId) throws DatasetManagementException {
+    ImmutableList.Builder<DatasetId> result = ImmutableList.builder();
+    for (DatasetSpecificationSummary summary : datasetFramework.getInstances(namespaceId.toId())) {
+      result.add(namespaceId.dataset(summary.getName()));
+    }
+    return result.build();
   }
 
   private Manifest createManifest(Class<?> cls, Class<?>... classes) {

@@ -28,10 +28,12 @@ import co.cask.cdap.data.runtime.DataSetsModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
 import co.cask.cdap.data2.dataset2.DatasetFramework;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.internal.TempFolder;
 import co.cask.cdap.internal.app.scheduler.LogPrintingJob;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.cdap.test.SlowTests;
 import co.cask.tephra.TransactionExecutorFactory;
@@ -93,7 +95,9 @@ public class DatasetBasedTimeScheduleStoreTest {
                                     new DataSetsModules().getStandaloneModules(),
                                     new DataSetServiceModules().getInMemoryModules(),
                                     new ExploreClientModule(),
-                                    new NamespaceStoreModule().getInMemoryModules());
+                                    new NamespaceStoreModule().getInMemoryModules(),
+                                    new AuthorizationModule(),
+                                    new AuthorizationEnforcementModule().getInMemoryModules());
     txService = injector.getInstance(TransactionManager.class);
     txService.startAndWait();
     dsOpsService = injector.getInstance(DatasetOpExecutor.class);

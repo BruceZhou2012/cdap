@@ -21,6 +21,7 @@ import co.cask.cdap.api.dataset.module.DatasetModule;
 import co.cask.cdap.api.metrics.MetricsCollectionService;
 import co.cask.cdap.common.conf.CConfigurationUtil;
 import co.cask.cdap.common.conf.Constants;
+import co.cask.cdap.common.guice.ConfigModule;
 import co.cask.cdap.common.metrics.NoOpMetricsCollectionService;
 import co.cask.cdap.data.dataset.SystemDatasetInstantiatorFactory;
 import co.cask.cdap.data.runtime.DynamicTransactionExecutorFactory;
@@ -42,6 +43,7 @@ import co.cask.cdap.data2.dataset2.lib.table.CoreDatasetsModule;
 import co.cask.cdap.data2.dataset2.module.lib.inmemory.InMemoryTableModule;
 import co.cask.cdap.data2.metadata.store.NoOpMetadataStore;
 import co.cask.cdap.data2.metrics.DatasetMetricsReporter;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.data2.transaction.DelegatingTransactionSystemClientService;
 import co.cask.cdap.data2.transaction.TransactionExecutorFactory;
 import co.cask.cdap.data2.transaction.TransactionSystemClientService;
@@ -49,13 +51,21 @@ import co.cask.cdap.explore.client.DiscoveryExploreClient;
 import co.cask.cdap.explore.client.ExploreFacade;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.id.NamespaceId;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
+import co.cask.cdap.security.authorization.AuthorizerInstantiator;
 import co.cask.http.HttpHandler;
 import co.cask.tephra.TransactionManager;
 import co.cask.tephra.inmemory.InMemoryTxSystemClient;
+import co.cask.tephra.runtime.TransactionInMemoryModule;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.Futures;
+import com.google.inject.AbstractModule;
+import com.google.inject.Guice;
+import com.google.inject.Injector;
+import com.google.inject.Singleton;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.twill.common.Threads;
@@ -102,6 +112,21 @@ public class RemoteDatasetFrameworkTest extends AbstractDatasetFrameworkTest {
     SystemDatasetInstantiatorFactory datasetInstantiatorFactory =
       new SystemDatasetInstantiatorFactory(locationFactory, framework, cConf);
 
+    // TODO: Refactor to use injector for everything
+    Injector injector = Guice.createInjector(
+      new ConfigModule(cConf, txConf),
+      new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules(),
+      new TransactionInMemoryModule(),
+      new AbstractModule() {
+        @Override
+        protected void configure() {
+          bind(MetricsCollectionService.class).to(NoOpMetricsCollectionService.class).in(Singleton.class);
+          bind(DatasetFramework.class).toInstance(framework);
+        }
+      }
+    );
+
     DatasetAdminService datasetAdminService =
       new DatasetAdminService(framework, cConf, locationFactory, datasetInstantiatorFactory, new NoOpMetadataStore());
     ImmutableSet<HttpHandler> handlers =
@@ -125,8 +150,10 @@ public class RemoteDatasetFrameworkTest extends AbstractDatasetFrameworkTest {
       new DatasetInstanceManager(txSystemClientService, txExecutorFactory, mdsFramework),
       new LocalDatasetOpExecutor(cConf, discoveryService, opExecutorService),
       exploreFacade,
-      cConf,
-      NAMESPACE_STORE);
+      NAMESPACE_STORE,
+      injector.getInstance(AuthorizationEnforcementService.class),
+      injector.getInstance(AuthorizerInstantiator.class),
+      cConf);
     instanceService.setAuditPublisher(inMemoryAuditPublisher);
 
     service = new DatasetService(cConf,
@@ -139,8 +166,8 @@ public class RemoteDatasetFrameworkTest extends AbstractDatasetFrameworkTest {
                                  new InMemoryDatasetOpExecutor(framework),
                                  new HashSet<DatasetMetricsReporter>(),
                                  instanceService,
-                                 NAMESPACE_STORE
-    );
+                                 NAMESPACE_STORE,
+                                 injector.getInstance(AuthorizationEnforcementService.class));
     // Start dataset service, wait for it to be discoverable
     service.start();
     final CountDownLatch startLatch = new CountDownLatch(1);

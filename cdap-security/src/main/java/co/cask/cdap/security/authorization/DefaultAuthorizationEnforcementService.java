@@ -121,6 +121,9 @@ public class DefaultAuthorizationEnforcementService extends AbstractScheduledSer
     if (!authorizationEnabled) {
       return;
     }
+    if (Principal.SYSTEM.equals(principal)) {
+      return;
+    }
     Set<Privilege> privileges = getPrivileges(principal);
     // If a principal has ALL privileges on the entity, authorization should succeed
     if (privileges.contains(new Privilege(entity, Action.ALL))) {

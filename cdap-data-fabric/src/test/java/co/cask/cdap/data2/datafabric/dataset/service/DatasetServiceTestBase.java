@@ -39,11 +39,13 @@ import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutorS
 import co.cask.cdap.data2.datafabric.dataset.service.executor.InMemoryDatasetOpExecutor;
 import co.cask.cdap.data2.datafabric.dataset.type.DatasetTypeManager;
 import co.cask.cdap.data2.dataset2.DatasetDefinitionRegistryFactory;
+import co.cask.cdap.data2.dataset2.DatasetFramework;
 import co.cask.cdap.data2.dataset2.DefaultDatasetDefinitionRegistry;
 import co.cask.cdap.data2.dataset2.InMemoryDatasetFramework;
 import co.cask.cdap.data2.dataset2.InMemoryNamespaceStore;
 import co.cask.cdap.data2.metadata.store.NoOpMetadataStore;
 import co.cask.cdap.data2.metrics.DatasetMetricsReporter;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.data2.transaction.DelegatingTransactionSystemClientService;
 import co.cask.cdap.data2.transaction.TransactionExecutorFactory;
 import co.cask.cdap.data2.transaction.TransactionSystemClientService;
@@ -53,6 +55,9 @@ import co.cask.cdap.internal.test.AppJarHelper;
 import co.cask.cdap.proto.DatasetModuleMeta;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
+import co.cask.cdap.security.authorization.AuthorizerInstantiator;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.common.http.HttpRequest;
 import co.cask.common.http.HttpRequests;
@@ -68,9 +73,11 @@ import com.google.common.collect.Iterables;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.google.gson.reflect.TypeToken;
+import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.Singleton;
 import com.google.inject.TypeLiteral;
 import com.google.inject.name.Names;
 import org.apache.commons.httpclient.HttpStatus;
@@ -138,19 +145,6 @@ public abstract class DatasetServiceTestBase {
     discoveryService = new InMemoryDiscoveryService();
     MetricsCollectionService metricsCollectionService = new NoOpMetricsCollectionService();
 
-    injector = Guice.createInjector(
-      new ConfigModule(cConf),
-      new LocationRuntimeModule().getInMemoryModules(),
-      new SystemDatasetRuntimeModule().getInMemoryModules(),
-      new TransactionInMemoryModule());
-
-    // Tx Manager to support working with datasets
-    txManager = injector.getInstance(TransactionManager.class);
-    txManager.startAndWait();
-    InMemoryTxSystemClient txSystemClient = new InMemoryTxSystemClient(txManager);
-    TransactionSystemClientService txSystemClientService =
-      new DelegatingTransactionSystemClientService(txSystemClient);
-
     registryFactory = new DatasetDefinitionRegistryFactory() {
       @Override
       public DatasetDefinitionRegistry create() {
@@ -159,10 +153,32 @@ public abstract class DatasetServiceTestBase {
         return registry;
       }
     };
+    dsFramework = new RemoteDatasetFramework(cConf, discoveryService, registryFactory);
+
+    injector = Guice.createInjector(
+      new ConfigModule(cConf),
+      new LocationRuntimeModule().getInMemoryModules(),
+      new SystemDatasetRuntimeModule().getInMemoryModules(),
+      new TransactionInMemoryModule(),
+      new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules(),
+      new AbstractModule() {
+        @Override
+        protected void configure() {
+          bind(MetricsCollectionService.class).to(NoOpMetricsCollectionService.class).in(Singleton.class);
+          bind(DatasetFramework.class).toInstance(dsFramework);
+        }
+      });
+
+    // Tx Manager to support working with datasets
+    txManager = injector.getInstance(TransactionManager.class);
+    txManager.startAndWait();
+    InMemoryTxSystemClient txSystemClient = new InMemoryTxSystemClient(txManager);
+    TransactionSystemClientService txSystemClientService =
+      new DelegatingTransactionSystemClientService(txSystemClient);
 
     locationFactory = injector.getInstance(LocationFactory.class);
     NamespacedLocationFactory namespacedLocationFactory = injector.getInstance(NamespacedLocationFactory.class);
-    dsFramework = new RemoteDatasetFramework(cConf, discoveryService, registryFactory);
     SystemDatasetInstantiatorFactory datasetInstantiatorFactory =
       new SystemDatasetInstantiatorFactory(locationFactory, dsFramework, cConf);
 
@@ -197,8 +213,10 @@ public abstract class DatasetServiceTestBase {
       new DatasetInstanceManager(txSystemClientService, txExecutorFactory, inMemoryDatasetFramework),
       new InMemoryDatasetOpExecutor(dsFramework),
       exploreFacade,
-      cConf,
-      namespaceStore);
+      namespaceStore,
+      injector.getInstance(AuthorizationEnforcementService.class),
+      injector.getInstance(AuthorizerInstantiator.class),
+      cConf);
 
     service = new DatasetService(cConf,
                                  namespacedLocationFactory,
@@ -209,7 +227,8 @@ public abstract class DatasetServiceTestBase {
                                  new InMemoryDatasetOpExecutor(dsFramework),
                                  new HashSet<DatasetMetricsReporter>(),
                                  instanceService,
-                                 namespaceStore);
+                                 namespaceStore,
+                                 injector.getInstance(AuthorizationEnforcementService.class));
 
     // Start dataset service, wait for it to be discoverable
     service.start();
