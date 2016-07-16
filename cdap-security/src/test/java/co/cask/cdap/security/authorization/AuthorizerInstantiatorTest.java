@@ -40,6 +40,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Collections;
 import java.util.Properties;
 import java.util.Set;
 import java.util.jar.Attributes;
@@ -294,7 +295,7 @@ public class AuthorizerInstantiatorTest extends AuthorizationTestBase {
 
     @Override
     public void enforce(EntityId entity, Principal principal, Action action) throws Exception {
-      // no-op
+      enforce(entity, principal, Collections.singleton(action));
     }
 
     @Override

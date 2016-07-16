@@ -32,7 +32,7 @@ public class NoOpAuthorizer extends AbstractAuthorizer {
 
   @Override
   public void enforce(EntityId entity, Principal principal, Action action) throws Exception {
-    // no-op
+    enforce(entity, principal, Collections.singleton(action));
   }
 
   @Override
