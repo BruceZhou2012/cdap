@@ -152,8 +152,7 @@ public class RemoteDatasetFrameworkTest extends AbstractDatasetFrameworkTest {
       exploreFacade,
       NAMESPACE_STORE,
       injector.getInstance(AuthorizationEnforcementService.class),
-      injector.getInstance(AuthorizerInstantiator.class),
-      cConf);
+      injector.getInstance(AuthorizerInstantiator.class));
     instanceService.setAuditPublisher(inMemoryAuditPublisher);
 
     service = new DatasetService(cConf,

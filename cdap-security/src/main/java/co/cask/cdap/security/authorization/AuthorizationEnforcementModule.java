@@ -26,7 +26,7 @@ import com.google.inject.Provider;
 import com.google.inject.Scopes;
 
 /**
- * Created by bhooshan on 7/13/16.
+ * A module that contains bindings for {@link AuthorizationEnforcementService} and {@link PrivilegesFetcher}.
  */
 public class AuthorizationEnforcementModule extends RuntimeModule {
 

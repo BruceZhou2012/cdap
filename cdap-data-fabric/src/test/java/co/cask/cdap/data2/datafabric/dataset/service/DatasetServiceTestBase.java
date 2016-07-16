@@ -215,8 +215,7 @@ public abstract class DatasetServiceTestBase {
       exploreFacade,
       namespaceStore,
       injector.getInstance(AuthorizationEnforcementService.class),
-      injector.getInstance(AuthorizerInstantiator.class),
-      cConf);
+      injector.getInstance(AuthorizerInstantiator.class));
 
     service = new DatasetService(cConf,
                                  namespacedLocationFactory,

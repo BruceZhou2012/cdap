@@ -139,6 +139,9 @@ public class DefaultAuthorizationEnforcementService extends AbstractScheduledSer
 
   @Override
   public <T extends EntityId> Set<T> filter(Set<T> unfiltered, Principal principal) throws Exception {
+    if (!authorizationEnabled) {
+      return unfiltered;
+    }
     if (Principal.SYSTEM.equals(principal)) {
       return unfiltered;
     }
