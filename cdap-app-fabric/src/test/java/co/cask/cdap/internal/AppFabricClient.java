@@ -170,7 +170,7 @@ public class AppFabricClient {
   }
 
   public String getStatus(String namespaceId, String appId, String flowId, ProgramType type)
-    throws BadRequestException, SchedulerException, NotFoundException {
+    throws Exception {
     MockResponder responder = new MockResponder();
     String uri = String.format("%s/apps/%s/%s/%s/status", getNamespacePath(namespaceId), appId, type, flowId);
     HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
@@ -213,7 +213,8 @@ public class AppFabricClient {
     verifyResponse(HttpResponseStatus.OK, responder.getStatus(), "Set service instances failed");
   }
 
-  public ServiceInstances getServiceInstances(String namespaceId, String applicationId, String serviceName) {
+  public ServiceInstances getServiceInstances(String namespaceId, String applicationId, String serviceName)
+    throws Exception {
     MockResponder responder = new MockResponder();
     String uri = String.format("%s/apps/%s/services/%s/instances",
                                getNamespacePath(namespaceId), applicationId, serviceName);
@@ -312,8 +313,7 @@ public class AppFabricClient {
     return nodeStates;
   }
 
-  public List<RunRecord> getHistory(Id.Program programId, ProgramRunStatus status) throws BadRequestException,
-    NotImplementedException, NotFoundException {
+  public List<RunRecord> getHistory(Id.Program programId, ProgramRunStatus status) throws Exception {
     String namespaceId = programId.getNamespaceId();
     String appId = programId.getApplicationId();
     String programName = programId.getId();
@@ -349,7 +349,7 @@ public class AppFabricClient {
   }
 
   public String scheduleStatus(String namespaceId, String appId, String schedId, int expectedResponseCode)
-    throws BadRequestException, SchedulerException {
+    throws Exception {
     MockResponder responder = new MockResponder();
     String uri = String.format("%s/apps/%s/schedules/%s/status", getNamespacePath(namespaceId), appId, schedId);
     HttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);

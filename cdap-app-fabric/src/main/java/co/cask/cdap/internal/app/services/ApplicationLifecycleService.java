@@ -62,21 +62,29 @@ import co.cask.cdap.proto.artifact.AppRequest;
 import co.cask.cdap.proto.artifact.ApplicationClass;
 import co.cask.cdap.proto.artifact.ArtifactSummary;
 import co.cask.cdap.proto.id.ApplicationId;
+import co.cask.cdap.proto.id.EntityId;
 import co.cask.cdap.proto.id.Ids;
 import co.cask.cdap.proto.id.NamespaceId;
 import co.cask.cdap.proto.id.ProgramId;
 import co.cask.cdap.proto.security.Action;
+import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.proto.security.Privilege;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
 import co.cask.cdap.security.authorization.AuthorizerInstantiator;
 import co.cask.cdap.security.spi.authentication.SecurityRequestContext;
+import co.cask.cdap.security.spi.authorization.UnauthorizedException;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.AbstractIdleService;
 import com.google.gson.Gson;
 import com.google.inject.Inject;
@@ -87,6 +95,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,6 +103,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
+import javax.ws.rs.NotAuthorizedException;
 
 /**
  * Service that manage lifecycle of Applications.
@@ -123,6 +133,7 @@ public class ApplicationLifecycleService extends AbstractIdleService {
   private final ManagerFactory<AppDeploymentInfo, ApplicationWithPrograms> managerFactory;
   private final MetadataStore metadataStore;
   private final AuthorizerInstantiator authorizerInstantiator;
+  private final AuthorizationEnforcementService authorizationEnforcementService;
 
   @Inject
   ApplicationLifecycleService(ProgramRuntimeService runtimeService, Store store, CConfiguration configuration,
@@ -133,7 +144,8 @@ public class ApplicationLifecycleService extends AbstractIdleService {
                               ArtifactRepository artifactRepository,
                               ManagerFactory<AppDeploymentInfo, ApplicationWithPrograms> managerFactory,
                               MetadataStore metadataStore,
-                              AuthorizerInstantiator authorizerInstantiator) {
+                              AuthorizerInstantiator authorizerInstantiator,
+                              AuthorizationEnforcementService authorizationEnforcementService) {
     this.runtimeService = runtimeService;
     this.store = store;
     this.configuration = configuration;
@@ -148,6 +160,7 @@ public class ApplicationLifecycleService extends AbstractIdleService {
     this.managerFactory = managerFactory;
     this.metadataStore = metadataStore;
     this.authorizerInstantiator = authorizerInstantiator;
+    this.authorizationEnforcementService = authorizationEnforcementService;
   }
 
   @Override
@@ -173,8 +186,8 @@ public class ApplicationLifecycleService extends AbstractIdleService {
    */
   public List<ApplicationRecord> getApps(Id.Namespace namespace,
                                          Set<String> artifactNames,
-                                         @Nullable String artifactVersion) {
-    return getApps(namespace, getAppPredicate(artifactNames, artifactVersion));
+                                         @Nullable String artifactVersion) throws Exception {
+    return getApps(namespace, getAppPredicate(artifactNames, artifactVersion), new AuthorizationPredicate());
   }
 
   /**
@@ -184,7 +197,8 @@ public class ApplicationLifecycleService extends AbstractIdleService {
    * @param predicate the predicate that must be satisfied in order to be returned
    * @return list of all applications in the namespace that satisfy the specified predicate
    */
-  public List<ApplicationRecord> getApps(Id.Namespace namespace, Predicate<ApplicationRecord> predicate) {
+  public List<ApplicationRecord> getApps(final Id.Namespace namespace, Predicate<ApplicationRecord> predicate,
+                                         Predicate<ApplicationRecord> authPredicate) throws Exception {
     List<ApplicationRecord> appRecords = new ArrayList<>();
     for (ApplicationSpecification appSpec : store.getAllApplications(namespace)) {
       // possible if this particular app was deploy prior to v3.2 and upgrade failed for some reason.
@@ -196,7 +210,27 @@ public class ApplicationLifecycleService extends AbstractIdleService {
         appRecords.add(record);
       }
     }
-    return appRecords;
+
+    Principal principal = SecurityRequestContext.toPrincipal();
+    Collection<ApplicationId> appIds = Collections2.transform(
+      appRecords, new Function<ApplicationRecord, ApplicationId>() {
+        @Override
+        public ApplicationId apply(ApplicationRecord applicationRecord) {
+          return namespace.toEntityId().app(applicationRecord.getName());
+        }
+      });
+    final Set<EntityId> authorized =
+      authorizationEnforcementService.filter(Sets.<EntityId>newHashSet(appIds), principal);
+    Iterable<ApplicationRecord> authorizedApps =
+      Iterables.filter(appRecords, new Predicate<ApplicationRecord>() {
+        @Override
+        public boolean apply(ApplicationRecord applicationRecord) {
+
+          return authorized.contains(namespace.toEntityId().app(applicationRecord.getName()));
+        }
+      });
+
+    return Lists.newArrayList(authorizedApps);
   }
 
   /**
@@ -206,10 +240,16 @@ public class ApplicationLifecycleService extends AbstractIdleService {
    * @return detail about the specified application
    * @throws ApplicationNotFoundException if the specified application does not exist
    */
-  public ApplicationDetail getAppDetail(Id.Application appId) throws ApplicationNotFoundException {
+  public ApplicationDetail getAppDetail(Id.Application appId) throws Exception {
     ApplicationSpecification appSpec = store.getApplication(appId);
     if (appSpec == null) {
       throw new ApplicationNotFoundException(appId);
+    }
+    Principal principal = SecurityRequestContext.toPrincipal();
+    Set<EntityId> authorized =
+      authorizationEnforcementService.filter(ImmutableSet.<EntityId>of(appId.toEntityId()), principal);
+    if (!Principal.SYSTEM.equals(principal) && authorized.isEmpty()) {
+      throw new UnauthorizedException(principal, Action.READ, appId.toEntityId());
     }
     return ApplicationDetail.fromSpec(appSpec);
   }
@@ -658,6 +698,26 @@ public class ApplicationLifecycleService extends AbstractIdleService {
     @Override
     public boolean apply(ApplicationRecord input) {
       return version.equals(input.getArtifact().getVersion());
+    }
+  }
+
+  private class AuthorizationPredicate implements Predicate<ApplicationRecord> {
+    private Set<Privilege> privileges;
+
+    AuthorizationPredicate() throws Exception {
+      this.privileges = authorizerInstantiator.get().listPrivileges(SecurityRequestContext.toPrincipal());
+    }
+
+    @Override
+    public boolean apply(ApplicationRecord input) {
+      for (Privilege privilege : privileges) {
+        if (privilege.getEntity() instanceof ApplicationId) {
+          if (((ApplicationId) privilege.getEntity()).getApplication().equals(input.getId())) {
+            return true;
+          }
+        }
+      }
+      return false;
     }
   }
 }

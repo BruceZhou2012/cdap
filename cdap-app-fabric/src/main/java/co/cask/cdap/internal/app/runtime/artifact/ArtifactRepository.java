@@ -42,20 +42,26 @@ import co.cask.cdap.proto.artifact.ArtifactClasses;
 import co.cask.cdap.proto.artifact.ArtifactInfo;
 import co.cask.cdap.proto.artifact.ArtifactRange;
 import co.cask.cdap.proto.artifact.ArtifactSummary;
+import co.cask.cdap.proto.id.EntityId;
 import co.cask.cdap.proto.id.InstanceId;
 import co.cask.cdap.proto.id.NamespaceId;
 import co.cask.cdap.proto.security.Action;
 import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
 import co.cask.cdap.security.authorization.AuthorizerInstantiator;
 import co.cask.cdap.security.spi.authentication.SecurityRequestContext;
 import co.cask.cdap.security.spi.authorization.UnauthorizedException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
+import com.google.common.base.Predicate;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import com.google.inject.Inject;
 import org.apache.twill.filesystem.Location;
@@ -65,6 +71,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -87,13 +95,15 @@ public class ArtifactRepository {
   private final ArtifactConfigReader configReader;
   private final MetadataStore metadataStore;
   private final AuthorizerInstantiator authorizerInstantiator;
+  private final AuthorizationEnforcementService authorizationEnforcementService;
   private final InstanceId instanceId;
 
   @VisibleForTesting
   @Inject
   public ArtifactRepository(CConfiguration cConf, ArtifactStore artifactStore, MetadataStore metadataStore,
                             AuthorizerInstantiator authorizerInstantiator,
-                            ProgramRunnerFactory programRunnerFactory) {
+                            ProgramRunnerFactory programRunnerFactory,
+                            AuthorizationEnforcementService authorizationEnforcementService) {
     this.artifactStore = artifactStore;
     this.artifactClassLoaderFactory = new ArtifactClassLoaderFactory(cConf, programRunnerFactory);
     this.artifactInspector = new ArtifactInspector(cConf, artifactClassLoaderFactory);
@@ -110,6 +120,7 @@ public class ArtifactRepository {
     this.metadataStore = metadataStore;
     this.authorizerInstantiator = authorizerInstantiator;
     this.instanceId = new InstanceId(cConf.get(Constants.INSTANCE_NAME));
+    this.authorizationEnforcementService = authorizationEnforcementService;
   }
 
   /**
@@ -145,12 +156,13 @@ public class ArtifactRepository {
    * @return an unmodifiable list of artifacts that belong to the given namespace
    * @throws IOException if there as an exception reading from the meta store
    */
-  public List<ArtifactSummary> getArtifacts(NamespaceId namespace, boolean includeSystem) throws IOException {
+  public List<ArtifactSummary> getArtifacts(final NamespaceId namespace, boolean includeSystem) throws Exception {
     List<ArtifactSummary> summaries = new ArrayList<>();
     if (includeSystem) {
       convertAndAdd(summaries, artifactStore.getArtifacts(NamespaceId.SYSTEM));
     }
-    return Collections.unmodifiableList(convertAndAdd(summaries, artifactStore.getArtifacts(namespace)));
+    List<ArtifactSummary> artifacts = convertAndAdd(summaries, artifactStore.getArtifacts(namespace));
+    return Collections.unmodifiableList(Lists.newArrayList(filterAuthorizedArtifacts(artifacts, namespace)));
   }
 
   /**
@@ -164,9 +176,10 @@ public class ArtifactRepository {
    * @throws ArtifactNotFoundException if no artifacts of the given name in the given namespace exist
    */
   public List<ArtifactSummary> getArtifacts(NamespaceId namespace, String name)
-    throws IOException, ArtifactNotFoundException {
+    throws Exception {
     List<ArtifactSummary> summaries = new ArrayList<>();
-    return Collections.unmodifiableList(convertAndAdd(summaries, artifactStore.getArtifacts(namespace, name)));
+    List<ArtifactSummary> artifacts = convertAndAdd(summaries, artifactStore.getArtifacts(namespace, name));
+    return Collections.unmodifiableList(Lists.newArrayList(filterAuthorizedArtifacts(artifacts, namespace)));
   }
 
   /**
@@ -178,19 +191,49 @@ public class ArtifactRepository {
    * @throws IOException if there as an exception reading from the meta store
    * @throws ArtifactNotFoundException if the given artifact does not exist
    */
-  public ArtifactDetail getArtifact(Id.Artifact artifactId) throws IOException, ArtifactNotFoundException {
+  public ArtifactDetail getArtifact(Id.Artifact artifactId) throws Exception {
+    Principal principal = SecurityRequestContext.toPrincipal();
+    Set<EntityId> authorized =
+      authorizationEnforcementService.filter(ImmutableSet.<EntityId>of(artifactId.toEntityId()), principal);
+    if (!Principal.SYSTEM.equals(principal) && authorized.isEmpty()) {
+      throw new UnauthorizedException(principal, Action.READ, artifactId.toEntityId());
+    }
     return artifactStore.getArtifact(artifactId);
   }
 
   /**
    * Get all artifacts that match artifacts in the given ranges.
    *
+   * @namespace namespace
    * @param range the range to match artifacts in
    * @return an unmodifiable list of all artifacts that match the given ranges. If none exist, an empty list
    *         is returned
    */
-  public List<ArtifactDetail> getArtifacts(final ArtifactRange range) {
-    return artifactStore.getArtifacts(range);
+  public List<ArtifactDetail> getArtifacts(final NamespaceId namespace, final ArtifactRange range) throws Exception {
+    List<ArtifactDetail> artifacts = artifactStore.getArtifacts(range);
+
+    Principal principal = SecurityRequestContext.toPrincipal();
+    Collection<co.cask.cdap.proto.id.ArtifactId> artifactIds = Collections2.transform(
+      artifacts, new Function<ArtifactDetail, co.cask.cdap.proto.id.ArtifactId>() {
+        @Nullable
+        @Override
+        public co.cask.cdap.proto.id.ArtifactId apply(@Nullable ArtifactDetail artifactDetail) {
+          ArtifactId artifactId = artifactDetail.getDescriptor().getArtifactId();
+          return namespace.artifact(artifactId.getName(), artifactId.getVersion().getVersion());
+        }
+      });
+    final Set<EntityId> authorized =
+      authorizationEnforcementService.filter(Sets.<EntityId>newHashSet(artifactIds), principal);
+    Iterable<ArtifactDetail> authorizedArtifacts =
+      Iterables.filter(artifacts, new Predicate<ArtifactDetail>() {
+        @Override
+        public boolean apply(ArtifactDetail artifactDetail) {
+          ArtifactId artifactId = artifactDetail.getDescriptor().getArtifactId();
+          return authorized.contains(namespace.artifact(artifactId.getName(), artifactId.getVersion().getVersion()));
+        }
+      });
+
+    return Lists.newArrayList(authorizedArtifacts);
   }
 
   /**
@@ -724,6 +767,31 @@ public class ArtifactRepository {
       summaries.add(ArtifactSummary.from(detail.getDescriptor().getArtifactId()));
     }
     return summaries;
+  }
+
+  // Filter aritfact summaries and return authorized list
+  private List<ArtifactSummary> filterAuthorizedArtifacts(List<ArtifactSummary> artifacts, final NamespaceId namespace)
+    throws Exception {
+    Principal principal = SecurityRequestContext.toPrincipal();
+
+    Collection<co.cask.cdap.proto.id.ArtifactId> artifactIds = Collections2.transform(
+      artifacts, new Function<ArtifactSummary, co.cask.cdap.proto.id.ArtifactId>() {
+        @Nullable
+        @Override
+        public co.cask.cdap.proto.id.ArtifactId apply(@Nullable ArtifactSummary artifactSummary) {
+          return namespace.artifact(artifactSummary.getName(), artifactSummary.getVersion());
+        }
+      });
+    final Set<EntityId> authorized =
+      authorizationEnforcementService.filter(Sets.<EntityId>newHashSet(artifactIds), principal);
+    Iterable<ArtifactSummary> authorizedArtifacts =
+      Iterables.filter(artifacts, new Predicate<ArtifactSummary>() {
+        @Override
+        public boolean apply(ArtifactSummary artifactSummary) {
+          return authorized.contains(namespace.artifact(artifactSummary.getName(), artifactSummary.getVersion()));
+        }
+      });
+    return Lists.newArrayList(authorizedArtifacts);
   }
 
   /**
