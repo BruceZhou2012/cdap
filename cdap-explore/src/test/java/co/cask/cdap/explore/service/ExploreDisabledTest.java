@@ -47,6 +47,7 @@ import co.cask.cdap.notifications.feeds.service.NoOpNotificationFeedManager;
 import co.cask.cdap.notifications.guice.NotificationServiceRuntimeModule;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
@@ -225,6 +226,7 @@ public class ExploreDisabledTest {
         new StreamAdminModules().getInMemoryModules(),
         new NotificationServiceRuntimeModule().getInMemoryModules(),
         new NamespaceStoreModule().getInMemoryModules(),
+        new AuthenticationContextModules().getHttpModule(),
         new AuthorizationModule(),
         new AuthorizationEnforcementModule().getInMemoryModules(),
         new AbstractModule() {

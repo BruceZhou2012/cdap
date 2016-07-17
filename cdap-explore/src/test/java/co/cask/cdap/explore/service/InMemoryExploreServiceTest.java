@@ -41,6 +41,7 @@ import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.QueryHandle;
 import co.cask.cdap.proto.QueryResult;
 import co.cask.cdap.proto.QueryStatus;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.cdap.test.SlowTests;
@@ -99,6 +100,7 @@ public class InMemoryExploreServiceTest {
         new StreamAdminModules().getInMemoryModules(),
         new NamespaceClientRuntimeModule().getInMemoryModules(),
         new NamespaceStoreModule().getStandaloneModules(),
+        new AuthenticationContextModules().getHttpModule(),
         new AuthorizationModule(),
         new AuthorizationEnforcementModule().getInMemoryModules(),
         new AbstractModule() {
