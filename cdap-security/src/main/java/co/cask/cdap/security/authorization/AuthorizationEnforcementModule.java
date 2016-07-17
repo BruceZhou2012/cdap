@@ -17,13 +17,16 @@
 package co.cask.cdap.security.authorization;
 
 import co.cask.cdap.common.runtime.RuntimeModule;
+import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.proto.security.Privilege;
 import co.cask.cdap.security.spi.authorization.AuthorizationEnforcer;
 import co.cask.cdap.security.spi.authorization.PrivilegesFetcher;
 import com.google.inject.AbstractModule;
 import com.google.inject.Inject;
 import com.google.inject.Module;
-import com.google.inject.Provider;
 import com.google.inject.Scopes;
+
+import java.util.Set;
 
 /**
  * A module that contains bindings for {@link AuthorizationEnforcementService} and {@link PrivilegesFetcher}.
@@ -41,7 +44,7 @@ public class AuthorizationEnforcementModule extends RuntimeModule {
           .in(Scopes.SINGLETON);
         // bind AuthorizationEnforcer to AuthorizationEnforcementService
         bind(AuthorizationEnforcer.class).to(AuthorizationEnforcementService.class).in(Scopes.SINGLETON);
-        bind(PrivilegesFetcher.class).toProvider(InMemoryPrivilegesFetcherProvider.class).in(Scopes.SINGLETON);
+        bind(PrivilegesFetcher.class).to(InMemoryPrivilegesFetcher.class).in(Scopes.SINGLETON);
       }
     };
   }
@@ -78,17 +81,18 @@ public class AuthorizationEnforcementModule extends RuntimeModule {
     };
   }
 
-  private static class InMemoryPrivilegesFetcherProvider implements Provider<PrivilegesFetcher> {
+  private static class InMemoryPrivilegesFetcher implements PrivilegesFetcher {
+
     private final AuthorizerInstantiator authorizerInstantiator;
 
     @Inject
-    private InMemoryPrivilegesFetcherProvider(AuthorizerInstantiator authorizerInstantiator) {
+    InMemoryPrivilegesFetcher(AuthorizerInstantiator authorizerInstantiator) {
       this.authorizerInstantiator = authorizerInstantiator;
     }
 
     @Override
-    public PrivilegesFetcher get() {
-      return authorizerInstantiator.get();
+    public Set<Privilege> listPrivileges(Principal principal) throws Exception {
+      return authorizerInstantiator.get().listPrivileges(principal);
     }
   }
 }
