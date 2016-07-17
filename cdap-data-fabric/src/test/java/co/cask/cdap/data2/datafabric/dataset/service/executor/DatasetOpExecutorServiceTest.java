@@ -43,6 +43,7 @@ import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
@@ -121,6 +122,7 @@ public class DatasetOpExecutorServiceTest {
       new TransactionMetricsModule(),
       new ExploreClientModule(),
       new NamespaceStoreModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules());
 

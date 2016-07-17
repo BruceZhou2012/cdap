@@ -55,9 +55,11 @@ import co.cask.cdap.internal.test.AppJarHelper;
 import co.cask.cdap.proto.DatasetModuleMeta;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
 import co.cask.cdap.security.authorization.AuthorizerInstantiator;
+import co.cask.cdap.security.authorization.DummyAuthenticationContext;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.common.http.HttpRequest;
 import co.cask.common.http.HttpRequests;
@@ -153,13 +155,15 @@ public abstract class DatasetServiceTestBase {
         return registry;
       }
     };
-    dsFramework = new RemoteDatasetFramework(cConf, discoveryService, registryFactory);
+    dsFramework = new RemoteDatasetFramework(cConf, discoveryService, registryFactory,
+                                             new DummyAuthenticationContext());
 
     injector = Guice.createInjector(
       new ConfigModule(cConf),
       new LocationRuntimeModule().getInMemoryModules(),
       new SystemDatasetRuntimeModule().getInMemoryModules(),
       new TransactionInMemoryModule(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {

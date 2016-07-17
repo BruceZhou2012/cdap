@@ -48,7 +48,9 @@ import co.cask.cdap.metadata.MetadataServiceModule;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
 import co.cask.cdap.notifications.feeds.client.NotificationFeedClientModule;
 import co.cask.cdap.proto.Id;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
+import co.cask.cdap.security.spi.authorization.AuthorizationContext;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.Service;
@@ -118,6 +120,7 @@ public class DatasetOpExecutorServerTwillRunnable extends AbstractMasterTwillRun
       new NotificationFeedClientModule(),
       new AuditModule().getDistributedModules(),
       new EntityVerifierModule(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getDistributedModules(),
       new AbstractModule() {

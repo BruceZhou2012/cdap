@@ -32,6 +32,7 @@ import co.cask.cdap.data2.dataset2.lib.table.inmemory.InMemoryTable;
 import co.cask.cdap.data2.dataset2.lib.table.inmemory.InMemoryTableService;
 import co.cask.cdap.data2.metadata.store.MetadataStore;
 import co.cask.cdap.data2.metadata.store.NoOpMetadataStore;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.tephra.DefaultTransactionExecutor;
 import co.cask.tephra.TransactionAware;
 import co.cask.tephra.TransactionExecutor;
@@ -97,7 +98,8 @@ public class TransactionServiceTest {
           protected void configure() {
             bind(MetadataStore.class).to(NoOpMetadataStore.class);
           }
-        })
+        }),
+        new AuthenticationContextModules().getHttpModule()
       );
 
       ZKClientService zkClient = injector.getInstance(ZKClientService.class);

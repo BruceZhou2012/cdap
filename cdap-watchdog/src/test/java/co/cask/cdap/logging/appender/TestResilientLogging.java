@@ -45,6 +45,7 @@ import co.cask.cdap.logging.guice.LoggingModules;
 import co.cask.cdap.logging.read.FileLogReader;
 import co.cask.cdap.logging.read.LogEvent;
 import co.cask.cdap.logging.read.ReadRange;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.tephra.TransactionManager;
@@ -110,6 +111,7 @@ public class TestResilientLogging {
       new ExploreClientModule(),
       new LoggingModules().getInMemoryModules(),
       new NamespaceStoreModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules());
 

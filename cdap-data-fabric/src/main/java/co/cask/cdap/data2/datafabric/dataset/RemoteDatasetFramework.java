@@ -40,6 +40,7 @@ import co.cask.cdap.proto.DatasetModuleMeta;
 import co.cask.cdap.proto.DatasetSpecificationSummary;
 import co.cask.cdap.proto.DatasetTypeMeta;
 import co.cask.cdap.proto.Id;
+import co.cask.cdap.security.spi.authentication.AuthenticationContext;
 import com.google.common.base.Objects;
 import com.google.common.base.Throwables;
 import com.google.common.cache.CacheBuilder;
@@ -77,15 +78,18 @@ public class RemoteDatasetFramework implements DatasetFramework {
   private final CConfiguration cConf;
   private final LoadingCache<Id.Namespace, DatasetServiceClient> clientCache;
   private final DatasetDefinitionRegistryFactory registryFactory;
+  private final AuthenticationContext authenticationContext;
 
   @Inject
   public RemoteDatasetFramework(final CConfiguration cConf, final DiscoveryServiceClient discoveryClient,
-                                DatasetDefinitionRegistryFactory registryFactory) {
+                                DatasetDefinitionRegistryFactory registryFactory,
+                                final AuthenticationContext authenticationContext) {
     this.cConf = cConf;
+    this.authenticationContext = authenticationContext;
     this.clientCache = CacheBuilder.newBuilder().build(new CacheLoader<Id.Namespace, DatasetServiceClient>() {
       @Override
       public DatasetServiceClient load(Id.Namespace namespace) throws Exception {
-        return new DatasetServiceClient(discoveryClient, namespace, cConf);
+        return new DatasetServiceClient(discoveryClient, namespace, cConf, authenticationContext);
       }
     });
     this.registryFactory = registryFactory;

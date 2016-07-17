@@ -32,6 +32,7 @@ import co.cask.cdap.data2.metadata.store.NoOpMetadataStore;
 import co.cask.cdap.data2.transaction.stream.StreamAdmin;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.notifications.feeds.guice.NotificationFeedServiceRuntimeModule;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
@@ -100,7 +101,8 @@ public class DistributedStreamCoordinatorClientTest extends StreamCoordinatorTes
           protected void configure() {
             bind(StreamMetaStore.class).to(InMemoryStreamMetaStore.class);
           }
-        })
+        }),
+      new AuthenticationContextModules().getHttpModule()
     );
 
     zkClient = injector.getInstance(ZKClientService.class);

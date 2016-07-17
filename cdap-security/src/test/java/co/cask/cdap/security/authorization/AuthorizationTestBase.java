@@ -47,7 +47,8 @@ public class AuthorizationTestBase {
           //no-op
         }
       };
-      return new DefaultAuthorizationContext(extensionProperties, new NoOpDatasetContext(), new NoOpAdmin(), txnl);
+      return new DefaultAuthorizationContext(extensionProperties, new NoOpDatasetContext(), new NoOpAdmin(), txnl,
+                                             new DummyAuthenticationContext());
     }
   };
   protected static LocationFactory locationFactory;

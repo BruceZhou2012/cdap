@@ -36,6 +36,7 @@ import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
 import co.cask.cdap.proto.Id;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import com.google.common.base.Throwables;
@@ -122,6 +123,7 @@ public class DatasetServiceManager extends AbstractIdleService {
       new MetricsClientRuntimeModule().getDistributedModules(),
       new ExploreClientModule(),
       new NamespaceStoreModule().getDistributedModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getDistributedModules()
     );

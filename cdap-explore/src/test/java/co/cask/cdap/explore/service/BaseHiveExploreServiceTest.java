@@ -62,6 +62,7 @@ import co.cask.cdap.proto.QueryResult;
 import co.cask.cdap.proto.QueryStatus;
 import co.cask.cdap.proto.StreamProperties;
 import co.cask.cdap.proto.id.NamespaceId;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
@@ -391,6 +392,7 @@ public class BaseHiveExploreServiceTest {
       new NotificationServiceRuntimeModule().getInMemoryModules(),
       new NamespaceClientRuntimeModule().getInMemoryModules(),
       new NamespaceStoreModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {
@@ -451,6 +453,7 @@ public class BaseHiveExploreServiceTest {
       new NotificationServiceRuntimeModule().getStandaloneModules(),
       new NamespaceClientRuntimeModule().getInMemoryModules(),
       new NamespaceStoreModule().getStandaloneModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {

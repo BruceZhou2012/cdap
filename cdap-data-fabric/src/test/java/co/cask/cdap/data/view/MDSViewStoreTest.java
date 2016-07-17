@@ -31,6 +31,7 @@ import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.client.ExploreClient;
 import co.cask.cdap.explore.client.MockExploreClient;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
 import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.tephra.TransactionManager;
@@ -62,6 +63,7 @@ public class MDSViewStoreTest extends ViewStoreTestBase {
       new DiscoveryRuntimeModule().getInMemoryModules(),
       new NamespaceStoreModule().getInMemoryModules(),
       new LocationRuntimeModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
       new AuthorizationModule(),
       new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {
