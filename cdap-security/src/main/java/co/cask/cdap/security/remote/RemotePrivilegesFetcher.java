@@ -17,7 +17,6 @@
 package co.cask.cdap.security.remote;
 
 import co.cask.cdap.common.conf.CConfiguration;
-import co.cask.cdap.gateway.handlers.meta.RemotePrivilegeFetcherHandler;
 import co.cask.cdap.internal.guava.reflect.TypeToken;
 import co.cask.cdap.proto.codec.EntityIdTypeAdapter;
 import co.cask.cdap.proto.id.EntityId;
@@ -38,7 +37,7 @@ import java.lang.reflect.Type;
 import java.util.Set;
 
 /**
- * An {@link PrivilegesFetcher} that is used to make an HTTP call to {@link RemotePrivilegeFetcherHandler} to fetch
+ * An {@link PrivilegesFetcher} that is used to make an HTTP call to RemotePrivilegeFetcherHandler to fetch
  * privileges of a given principal. Communication over HTTP is necessary because program containers, which use this
  * class (and run as the user running the program) may not be white-listed to make calls to authorization providers
  * (like Apache Sentry).

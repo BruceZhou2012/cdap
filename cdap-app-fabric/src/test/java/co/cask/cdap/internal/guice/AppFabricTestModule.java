@@ -48,7 +48,9 @@ import co.cask.cdap.notifications.feeds.guice.NotificationFeedServiceRuntimeModu
 import co.cask.cdap.notifications.guice.NotificationServiceRuntimeModule;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.ScheduledRuntime;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.security.guice.SecureStoreModules;
+import co.cask.cdap.security.remote.RemotePrivilegesFetcher;
 import co.cask.cdap.security.spi.authorization.PrivilegesFetcher;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import com.google.common.collect.ImmutableList;
@@ -116,6 +118,7 @@ public final class AppFabricTestModule extends AbstractModule {
     install(new MetadataServiceModule());
     install(new AuthorizationModule());
     install(new SecureStoreModules().getInMemoryModules());
+    install(new AuthorizationEnforcementModule().getStandaloneModules());
     install(new AbstractModule() {
       @Override
       protected void configure() {
