@@ -38,7 +38,6 @@ import co.cask.cdap.data2.registry.RuntimeUsageRegistry;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.internal.app.queue.QueueReaderFactory;
 import co.cask.cdap.internal.app.store.remote.RemoteLineageWriter;
-import co.cask.cdap.internal.app.store.remote.RemotePrivilegesFetcher;
 import co.cask.cdap.internal.app.store.remote.RemoteRuntimeStore;
 import co.cask.cdap.internal.app.store.remote.RemoteRuntimeUsageRegistry;
 import co.cask.cdap.logging.guice.LoggingModules;

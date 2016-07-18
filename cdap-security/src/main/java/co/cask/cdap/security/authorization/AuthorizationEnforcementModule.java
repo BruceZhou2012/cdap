@@ -17,6 +17,7 @@
 package co.cask.cdap.security.authorization;
 
 import co.cask.cdap.common.runtime.RuntimeModule;
+import co.cask.cdap.security.remote.RemotePrivilegesFetcher;
 import co.cask.cdap.security.spi.authorization.AuthorizationEnforcer;
 import co.cask.cdap.security.spi.authorization.PrivilegesFetcher;
 import com.google.inject.AbstractModule;
