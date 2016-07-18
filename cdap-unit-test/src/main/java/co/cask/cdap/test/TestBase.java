@@ -26,7 +26,6 @@ import co.cask.cdap.api.metrics.MetricStore;
 import co.cask.cdap.api.metrics.MetricsCollectionService;
 import co.cask.cdap.api.plugin.PluginClass;
 import co.cask.cdap.app.guice.AppFabricServiceRuntimeModule;
-import co.cask.cdap.app.guice.AuthorizationModule;
 import co.cask.cdap.app.guice.InMemoryProgramRunnerModule;
 import co.cask.cdap.app.guice.ServiceStoreModules;
 import co.cask.cdap.common.conf.CConfiguration;
@@ -57,6 +56,7 @@ import co.cask.cdap.data.stream.service.StreamWriterSizeCollector;
 import co.cask.cdap.data.view.ViewAdminModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.data2.transaction.stream.FileStreamAdmin;
 import co.cask.cdap.data2.transaction.stream.StreamAdmin;
 import co.cask.cdap.data2.transaction.stream.StreamConsumerFactory;
@@ -81,6 +81,7 @@ import co.cask.cdap.proto.NamespaceMeta;
 import co.cask.cdap.proto.artifact.AppRequest;
 import co.cask.cdap.proto.artifact.ArtifactRange;
 import co.cask.cdap.proto.id.ArtifactId;
+import co.cask.cdap.proto.id.DatasetId;
 import co.cask.cdap.proto.id.InstanceId;
 import co.cask.cdap.proto.id.NamespaceId;
 import co.cask.cdap.proto.security.Action;
@@ -239,6 +240,7 @@ public class TestBase {
       new NamespaceStoreModule().getStandaloneModules(),
       new AuthorizationEnforcementModule().getInMemoryModules(),
       new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {
         @Override
         @SuppressWarnings("deprecation")
@@ -828,6 +830,24 @@ public class TestBase {
                                                                 String datasetInstanceName) throws Exception {
     return addDatasetInstance(Id.Namespace.DEFAULT, datasetTypeName, datasetInstanceName,
                               DatasetProperties.EMPTY);
+  }
+
+  /**
+   * Removes a dataset instance
+   *
+   * @param datasetId the {@link DatasetId} to remove
+   */
+  protected final void removeDatasetInstance(DatasetId datasetId) throws Exception {
+    getTestManager().removeDatasetInstance(datasetId);
+  }
+
+  /**
+   * Lists all datasets in the specified namespace
+   *
+   * @param namespaceId the {@link NamespaceId} to list datasets from
+   */
+  protected final List<DatasetId> listDatasets(NamespaceId namespaceId) throws Exception {
+    return getTestManager().listDatasets(namespaceId);
   }
 
   /**

@@ -40,6 +40,7 @@ import co.cask.cdap.data.view.ViewAdminModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
 import co.cask.cdap.data2.dataset2.DatasetFramework;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.data2.transaction.stream.StreamAdmin;
 import co.cask.cdap.explore.client.ExploreClient;
 import co.cask.cdap.explore.client.ExploreExecutionResult;
@@ -61,6 +62,8 @@ import co.cask.cdap.proto.QueryResult;
 import co.cask.cdap.proto.QueryStatus;
 import co.cask.cdap.proto.StreamProperties;
 import co.cask.cdap.proto.id.NamespaceId;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.http.HttpHandler;
@@ -389,6 +392,9 @@ public class BaseHiveExploreServiceTest {
       new NotificationServiceRuntimeModule().getInMemoryModules(),
       new NamespaceClientRuntimeModule().getInMemoryModules(),
       new NamespaceStoreModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
+      new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {
         @Override
         protected void configure() {
@@ -447,6 +453,9 @@ public class BaseHiveExploreServiceTest {
       new NotificationServiceRuntimeModule().getStandaloneModules(),
       new NamespaceClientRuntimeModule().getInMemoryModules(),
       new NamespaceStoreModule().getStandaloneModules(),
+      new AuthenticationContextModules().getHttpModule(),
+      new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules(),
       new AbstractModule() {
         @Override
         protected void configure() {

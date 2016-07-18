@@ -24,6 +24,8 @@ import co.cask.cdap.api.data.DatasetInstantiationException;
 import co.cask.cdap.api.dataset.Dataset;
 import co.cask.cdap.api.dataset.DatasetManagementException;
 import co.cask.cdap.api.dataset.DatasetProperties;
+import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.security.spi.authentication.AuthenticationContext;
 import co.cask.cdap.security.spi.authorization.AuthorizationContext;
 import co.cask.tephra.TransactionFailureException;
 import com.google.common.annotations.VisibleForTesting;
@@ -42,16 +44,18 @@ public class DefaultAuthorizationContext implements AuthorizationContext {
   private final DatasetContext delegateDatasetContext;
   private final Admin delegateAdmin;
   private final Transactional delegateTxnl;
+  private final AuthenticationContext delegateAuthenticationContext;
 
   @Inject
   @VisibleForTesting
   public DefaultAuthorizationContext(@Assisted("extension-properties") Properties extensionProperties,
                                      DatasetContext delegateDatasetContext, Admin delegateAdmin,
-                                     Transactional delegateTxnl) {
+                                     Transactional delegateTxnl, AuthenticationContext delegateAuthenticationContext) {
     this.extensionProperties = extensionProperties;
     this.delegateDatasetContext = delegateDatasetContext;
     this.delegateAdmin = delegateAdmin;
     this.delegateTxnl = delegateTxnl;
+    this.delegateAuthenticationContext = delegateAuthenticationContext;
   }
 
   @Override
@@ -129,5 +133,10 @@ public class DefaultAuthorizationContext implements AuthorizationContext {
   @Override
   public Properties getExtensionProperties() {
     return extensionProperties;
+  }
+
+  @Override
+  public Principal getRequestingPrincipal() {
+    return delegateAuthenticationContext.getRequestingPrincipal();
   }
 }

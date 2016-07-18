@@ -33,7 +33,9 @@ import co.cask.cdap.proto.DatasetModuleMeta;
 import co.cask.cdap.proto.DatasetSpecificationSummary;
 import co.cask.cdap.proto.DatasetTypeMeta;
 import co.cask.cdap.proto.Id;
-import co.cask.cdap.security.spi.authentication.SecurityRequestContext;
+import co.cask.cdap.proto.id.NamespaceId;
+import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.security.spi.authentication.AuthenticationContext;
 import co.cask.common.http.HttpMethod;
 import co.cask.common.http.HttpRequest;
 import co.cask.common.http.HttpRequestConfig;
@@ -76,9 +78,11 @@ class DatasetServiceClient {
   private final Supplier<EndpointStrategy> endpointStrategySupplier;
   private final Id.Namespace namespaceId;
   private final HttpRequestConfig httpRequestConfig;
+  private final boolean securityEnabled;
+  private final AuthenticationContext authenticationContext;
 
   DatasetServiceClient(final DiscoveryServiceClient discoveryClient, Id.Namespace namespaceId,
-                              CConfiguration cConf) {
+                       CConfiguration cConf, AuthenticationContext authenticationContext) {
     this.endpointStrategySupplier = Suppliers.memoize(new Supplier<EndpointStrategy>() {
       @Override
       public EndpointStrategy get() {
@@ -86,9 +90,10 @@ class DatasetServiceClient {
       }
     });
     this.namespaceId = namespaceId;
-
     int httpTimeoutMs = cConf.getInt(Constants.HTTP_CLIENT_TIMEOUT_MS);
     this.httpRequestConfig = new HttpRequestConfig(httpTimeoutMs, httpTimeoutMs);
+    this.securityEnabled = cConf.getBoolean(Constants.Security.ENABLED);
+    this.authenticationContext = authenticationContext;
   }
 
   @Nullable
@@ -255,12 +260,8 @@ class DatasetServiceClient {
     return doRequest(HttpMethod.GET, resource);
   }
 
-  private HttpResponse doGet(String resource, Multimap<String, String> headers) throws DatasetManagementException {
-    return doRequest(HttpMethod.GET, resource, headers, (InputSupplier<? extends InputStream>) null);
-  }
-
   private HttpResponse doPut(String resource, String body) throws DatasetManagementException {
-    return doRequest(HttpMethod.PUT, resource, null, body);
+    return doRequest(HttpMethod.PUT, resource, body, null);
   }
 
   private HttpResponse doPost(String resource) throws DatasetManagementException {
@@ -271,13 +272,12 @@ class DatasetServiceClient {
     return doRequest(HttpMethod.DELETE, resource);
   }
 
-  private HttpResponse doRequest(HttpMethod method, String resource,
-                                 @Nullable Multimap<String, String> headers,
-                                 @Nullable String body) throws DatasetManagementException {
+  private HttpResponse doRequest(HttpMethod method, String resource, String body,
+                                 @Nullable Multimap<String, String> headers) throws DatasetManagementException {
 
     String url = resolve(resource);
     try {
-      return HttpRequests.execute(processBuilder(
+      return HttpRequests.execute(addUserIdHeader(
         HttpRequest.builder(method, new URL(url))
           .addHeaders(headers)
           .withBody(body)
@@ -298,7 +298,7 @@ class DatasetServiceClient {
 
     String url = resolve(resource);
     try {
-      return HttpRequests.execute(processBuilder(
+      return HttpRequests.execute(addUserIdHeader(
         HttpRequest.builder(method, new URL(url))
           .addHeaders(headers)
           .withBody(body)
@@ -312,11 +312,28 @@ class DatasetServiceClient {
     }
   }
 
-  private HttpRequest.Builder processBuilder(HttpRequest.Builder builder) {
-    if (SecurityRequestContext.getUserId() != null) {
-      builder.addHeader(Constants.Security.Headers.USER_ID, SecurityRequestContext.getUserId());
+  private HttpRequest.Builder addUserIdHeader(HttpRequest.Builder builder) throws IOException {
+    if (!securityEnabled) {
+      return builder;
     }
-    return builder;
+    String userId;
+    if (NamespaceId.SYSTEM.equals(namespaceId.toEntityId())) {
+      // For getting a system dataset like MDS, use the system principal. It is ok to do so, since DatasetServiceClient
+      // is an internal client that is not exposed to users.
+      userId = Principal.SYSTEM.getName();
+    } else {
+      // If the request originated from the router and was forwarded to any service other than dataset service, before
+      // going to dataset service via dataset service client, the userId could be set in the SecurityRequestContext.
+      // e.g. deploying an app that contains a dataset
+//      userId = SecurityRequestContext.getUserId();
+//      if (userId == null) {
+//        // For user datasets, if a dataset call is happening from a program runtime, then find the userId from
+//        // UserGroupInformation#getCurrentUser()
+//        userId = UserGroupInformation.getCurrentUser().getShortUserName();
+//      }
+      userId = authenticationContext.getRequestingPrincipal().getName();
+    }
+    return builder.addHeader(Constants.Security.Headers.USER_ID, userId);
   }
 
   private HttpResponse doRequest(HttpMethod method, String url) throws DatasetManagementException {

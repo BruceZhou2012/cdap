@@ -19,7 +19,6 @@ package co.cask.cdap.internal.guice;
 import co.cask.cdap.api.schedule.SchedulableProgramType;
 import co.cask.cdap.api.schedule.Schedule;
 import co.cask.cdap.app.guice.AppFabricServiceRuntimeModule;
-import co.cask.cdap.app.guice.AuthorizationModule;
 import co.cask.cdap.app.guice.ProgramRunnerRuntimeModule;
 import co.cask.cdap.app.guice.ServiceStoreModules;
 import co.cask.cdap.common.conf.CConfiguration;
@@ -36,6 +35,7 @@ import co.cask.cdap.data.runtime.TransactionExecutorModule;
 import co.cask.cdap.data.stream.StreamAdminModules;
 import co.cask.cdap.data.stream.service.StreamServiceRuntimeModule;
 import co.cask.cdap.data.view.ViewAdminModules;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.internal.app.runtime.schedule.Scheduler;
 import co.cask.cdap.internal.app.runtime.schedule.SchedulerException;
@@ -117,8 +117,9 @@ public final class AppFabricTestModule extends AbstractModule {
     install(new NamespaceStoreModule().getStandaloneModules());
     install(new MetadataServiceModule());
     install(new AuthorizationModule());
-    install(new SecureStoreModules().getInMemoryModules());
+    // we want to use RemotePrivilegesFetcher in this module
     install(new AuthorizationEnforcementModule().getStandaloneModules());
+    install(new SecureStoreModules().getInMemoryModules());
     install(new AbstractModule() {
       @Override
       protected void configure() {

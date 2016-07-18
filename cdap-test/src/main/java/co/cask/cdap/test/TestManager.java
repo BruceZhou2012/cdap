@@ -31,10 +31,12 @@ import co.cask.cdap.proto.artifact.AppRequest;
 import co.cask.cdap.proto.artifact.ArtifactRange;
 import co.cask.cdap.proto.id.ApplicationId;
 import co.cask.cdap.proto.id.ArtifactId;
+import co.cask.cdap.proto.id.DatasetId;
 import co.cask.cdap.proto.id.NamespaceId;
 
 import java.io.File;
 import java.sql.Connection;
+import java.util.List;
 import java.util.Set;
 import java.util.jar.Manifest;
 import javax.annotation.Nullable;
@@ -401,6 +403,13 @@ public interface TestManager {
                                                 String datasetTypeName, String datasetInstanceName) throws Exception;
 
   /**
+   * Removes a dataset instance
+   *
+   * @param datasetId the {@link DatasetId dataset instance} to remove
+   */
+  void removeDatasetInstance(DatasetId datasetId) throws Exception;
+
+  /**
    * Gets Dataset manager of Dataset instance of type {@literal <}T>.
    *
    * @param namespace namespace of the dataset
@@ -447,4 +456,11 @@ public interface TestManager {
    * @param namespaceId the namespace from which to remove all apps
    */
   void deleteAllApplications(NamespaceId namespaceId) throws Exception;
+
+  /**
+   * Lists all datasets in the specified namespace
+   *
+   * @param namespaceId the namespace in which to list all datasets
+   */
+  List<DatasetId> listDatasets(NamespaceId namespaceId) throws Exception;
 }

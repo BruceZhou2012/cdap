@@ -18,6 +18,10 @@ package co.cask.cdap.security;
 
 import co.cask.cdap.AllProgramsApp;
 import co.cask.cdap.ConfigTestApp;
+import co.cask.cdap.api.common.Bytes;
+import co.cask.cdap.api.dataset.DatasetManagementException;
+import co.cask.cdap.api.dataset.lib.KeyValueTable;
+import co.cask.cdap.api.dataset.table.Table;
 import co.cask.cdap.common.conf.Constants;
 import co.cask.cdap.common.namespace.NamespaceAdmin;
 import co.cask.cdap.common.utils.Tasks;
@@ -27,6 +31,8 @@ import co.cask.cdap.proto.artifact.AppRequest;
 import co.cask.cdap.proto.artifact.ArtifactSummary;
 import co.cask.cdap.proto.id.ApplicationId;
 import co.cask.cdap.proto.id.ArtifactId;
+import co.cask.cdap.proto.id.DatasetId;
+import co.cask.cdap.proto.id.EntityId;
 import co.cask.cdap.proto.id.Ids;
 import co.cask.cdap.proto.id.InstanceId;
 import co.cask.cdap.proto.id.NamespaceId;
@@ -40,18 +46,23 @@ import co.cask.cdap.security.spi.authorization.Authorizer;
 import co.cask.cdap.security.spi.authorization.UnauthorizedException;
 import co.cask.cdap.test.ApplicationManager;
 import co.cask.cdap.test.ArtifactManager;
+import co.cask.cdap.test.DataSetManager;
 import co.cask.cdap.test.ServiceManager;
 import co.cask.cdap.test.SlowTests;
 import co.cask.cdap.test.TestBase;
 import co.cask.cdap.test.TestConfiguration;
 import co.cask.cdap.test.app.DummyApp;
 import co.cask.cdap.test.artifacts.plugins.ToStringPlugin;
+import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import org.apache.twill.filesystem.LocalLocationFactory;
 import org.apache.twill.filesystem.Location;
 import org.apache.twill.filesystem.LocationFactory;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
@@ -66,7 +77,9 @@ import org.junit.runners.model.Statement;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
@@ -76,7 +89,10 @@ import java.util.concurrent.TimeUnit;
 public class AuthorizationTest extends TestBase {
 
   @ClassRule
-  public static final TestConfiguration CONFIG = new TestConfiguration(Constants.Explore.EXPLORE_ENABLED, false);
+  public static final TestConfiguration CONFIG = new TestConfiguration(
+    Constants.Explore.EXPLORE_ENABLED, false,
+    Constants.Security.Authorization.CACHE_ENABLED, false
+  );
 
   private static final String OLD_USER = SecurityRequestContext.getUserId();
   private static final Principal ALICE = new Principal("alice", Principal.PrincipalType.USER);
@@ -142,14 +158,7 @@ public class AuthorizationTest extends TestBase {
     } catch (UnauthorizedException expected) {
       // expected
     }
-    authorizer.grant(instance, ALICE, ImmutableSet.of(Action.ADMIN));
-    Assert.assertEquals(ImmutableSet.of(new Privilege(instance, Action.ADMIN)), authorizer.listPrivileges(ALICE));
-    namespaceAdmin.create(AUTH_NAMESPACE_META);
-    // create should grant all privileges
-    Assert.assertEquals(
-      ImmutableSet.of(new Privilege(instance, Action.ADMIN), new Privilege(AUTH_NAMESPACE, Action.ALL)),
-      authorizer.listPrivileges(ALICE)
-    );
+    createAuthNamespace();
     // No authorization currently for listing and retrieving namespace
     namespaceAdmin.list();
     namespaceAdmin.get(AUTH_NAMESPACE.toId());
@@ -177,12 +186,6 @@ public class AuthorizationTest extends TestBase {
     );
     NamespaceMeta updated = new NamespaceMeta.Builder(AUTH_NAMESPACE_META).setDescription("new desc").build();
     namespaceAdmin.updateProperties(AUTH_NAMESPACE.toId(), updated);
-    namespaceAdmin.delete(AUTH_NAMESPACE.toId());
-    // once the namespace has been deleted, privileges on that namespace should be revoked
-    Assert.assertEquals(ImmutableSet.of(new Privilege(instance, Action.ADMIN)), authorizer.listPrivileges(ALICE));
-    // revoke alice's ADMIN privilege on the instance, so we get back to the same state as at the beginning of the test
-    authorizer.revoke(instance);
-    Assert.assertEquals(ImmutableSet.of(), authorizer.listPrivileges(ALICE));
   }
 
   @Test
@@ -194,13 +197,8 @@ public class AuthorizationTest extends TestBase {
     } catch (RuntimeException e) {
       Assert.assertTrue(e.getCause() instanceof UnauthorizedException);
     }
+    createAuthNamespace();
     Authorizer authorizer = getAuthorizer();
-    authorizer.grant(instance, ALICE, ImmutableSet.of(Action.ADMIN));
-    getNamespaceAdmin().create(AUTH_NAMESPACE_META);
-    Assert.assertEquals(
-      ImmutableSet.of(new Privilege(instance, Action.ADMIN), new Privilege(AUTH_NAMESPACE, Action.ALL)),
-      authorizer.listPrivileges(ALICE)
-    );
     // deployment should succeed in the authorized namespace because alice has all privileges on it
     ApplicationManager appManager = deployApplication(AUTH_NAMESPACE.toId(), DummyApp.class);
     // alice should get all privileges on the app after deployment succeeds
@@ -209,13 +207,15 @@ public class AuthorizationTest extends TestBase {
     ArtifactId dummyArtifact =
       Ids.namespace(dummyAppId.getNamespace()).artifact(artifact.getName(), artifact.getVersion());
     ProgramId greetingServiceId = dummyAppId.service(DummyApp.Greeting.SERVICE_NAME);
+    DatasetId dsId = AUTH_NAMESPACE.dataset("whom");
     Assert.assertEquals(
       ImmutableSet.of(
         new Privilege(instance, Action.ADMIN),
         new Privilege(AUTH_NAMESPACE, Action.ALL),
         new Privilege(dummyAppId, Action.ALL),
         new Privilege(dummyArtifact, Action.ALL),
-        new Privilege(greetingServiceId, Action.ALL)
+        new Privilege(greetingServiceId, Action.ALL),
+        new Privilege(dsId, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
@@ -258,7 +258,8 @@ public class AuthorizationTest extends TestBase {
       ImmutableSet.of(
         new Privilege(instance, Action.ADMIN),
         new Privilege(AUTH_NAMESPACE, Action.ALL),
-        new Privilege(dummyArtifact, Action.ALL)
+        new Privilege(dummyArtifact, Action.ALL),
+        new Privilege(dsId, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
@@ -282,8 +283,12 @@ public class AuthorizationTest extends TestBase {
     ProgramId workflowId = workflowAppId.workflow(AllProgramsApp.NoOpWorkflow.NAME);
     ProgramId serviceId = workflowAppId.service(AllProgramsApp.NoOpService.NAME);
     ProgramId workerId = workflowAppId.worker(AllProgramsApp.NoOpWorker.NAME);
+    DatasetId kvt = AUTH_NAMESPACE.dataset(AllProgramsApp.DATASET_NAME);
+    DatasetId kvt2 = AUTH_NAMESPACE.dataset(AllProgramsApp.DATASET_NAME2);
+    DatasetId kvt3 = AUTH_NAMESPACE.dataset(AllProgramsApp.DATASET_NAME3);
+    DatasetId dsWithSchema = AUTH_NAMESPACE.dataset(AllProgramsApp.DS_WITH_SCHEMA_NAME);
 
-      Assert.assertEquals(
+    Assert.assertEquals(
       ImmutableSet.of(
         new Privilege(instance, Action.ADMIN),
         new Privilege(AUTH_NAMESPACE, Action.ALL),
@@ -299,7 +304,12 @@ public class AuthorizationTest extends TestBase {
         new Privilege(sparkId, Action.ALL),
         new Privilege(workflowId, Action.ALL),
         new Privilege(serviceId, Action.ALL),
-        new Privilege(workerId, Action.ALL)
+        new Privilege(workerId, Action.ALL),
+        new Privilege(dsId, Action.ALL),
+        new Privilege(kvt, Action.ALL),
+        new Privilege(kvt2, Action.ALL),
+        new Privilege(kvt3, Action.ALL),
+        new Privilege(dsWithSchema, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
@@ -322,7 +332,12 @@ public class AuthorizationTest extends TestBase {
         new Privilege(updatedDummyArtifact, Action.ALL),
         new Privilege(workflowArtifact, Action.ALL),
         new Privilege(dummyAppId, Action.ALL),
-        new Privilege(greetingServiceId, Action.ALL)
+        new Privilege(greetingServiceId, Action.ALL),
+        new Privilege(dsId, Action.ALL),
+        new Privilege(kvt, Action.ALL),
+        new Privilege(kvt2, Action.ALL),
+        new Privilege(kvt3, Action.ALL),
+        new Privilege(dsWithSchema, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
@@ -344,16 +359,15 @@ public class AuthorizationTest extends TestBase {
         new Privilege(AUTH_NAMESPACE, Action.ALL),
         new Privilege(dummyArtifact, Action.ALL),
         new Privilege(updatedDummyArtifact, Action.ALL),
-        new Privilege(workflowArtifact, Action.ALL)
+        new Privilege(workflowArtifact, Action.ALL),
+        new Privilege(dsId, Action.ALL),
+        new Privilege(kvt, Action.ALL),
+        new Privilege(kvt2, Action.ALL),
+        new Privilege(kvt3, Action.ALL),
+        new Privilege(dsWithSchema, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
-    // clean up. remove the namespace. all privileges on the namespace should be revoked
-    getNamespaceAdmin().delete(AUTH_NAMESPACE.toId());
-    Assert.assertEquals(ImmutableSet.of(new Privilege(instance, Action.ADMIN)), authorizer.listPrivileges(ALICE));
-    // revoke privileges on the instance
-    authorizer.revoke(instance);
-    Assert.assertEquals(ImmutableSet.of(), authorizer.listPrivileges(ALICE));
   }
 
   @Test
@@ -379,13 +393,8 @@ public class AuthorizationTest extends TestBase {
       // expected
     }
     // create a new namespace, alice should get ALL privileges on the namespace
+    createAuthNamespace();
     Authorizer authorizer = getAuthorizer();
-    authorizer.grant(instance, ALICE, ImmutableSet.of(Action.ADMIN));
-    getNamespaceAdmin().create(AUTH_NAMESPACE_META);
-    Assert.assertEquals(
-      ImmutableSet.of(new Privilege(instance, Action.ADMIN), new Privilege(AUTH_NAMESPACE, Action.ALL)),
-      authorizer.listPrivileges(ALICE)
-    );
     // artifact deployment in this namespace should now succeed, and alice should have ALL privileges on the artifacts
     ArtifactId appArtifactId = new ArtifactId(AUTH_NAMESPACE.getNamespace(), appArtifactName, appArtifactVersion);
     ArtifactManager appArtifactManager = addAppArtifact(appArtifactId, ConfigTestApp.class);
@@ -454,36 +463,27 @@ public class AuthorizationTest extends TestBase {
       ),
       authorizer.listPrivileges(ALICE)
     );
-    // clean up. remove the namespace. all privileges on the namespace should be revoked
-    getNamespaceAdmin().delete(AUTH_NAMESPACE.toId());
-    Assert.assertEquals(ImmutableSet.of(new Privilege(instance, Action.ADMIN)), authorizer.listPrivileges(ALICE));
-    // revoke privileges on the instance
-    authorizer.revoke(instance);
-    Assert.assertEquals(ImmutableSet.of(), authorizer.listPrivileges(ALICE));
   }
 
   @Test
   public void testPrograms() throws Exception {
+    createAuthNamespace();
     Authorizer authorizer = getAuthorizer();
-    authorizer.grant(instance, ALICE, ImmutableSet.of(Action.ADMIN));
-    getNamespaceAdmin().create(AUTH_NAMESPACE_META);
-    Assert.assertEquals(
-      ImmutableSet.of(new Privilege(instance, Action.ADMIN), new Privilege(AUTH_NAMESPACE, Action.ALL)),
-      authorizer.listPrivileges(ALICE)
-    );
     final ApplicationManager dummyAppManager = deployApplication(AUTH_NAMESPACE.toId(), DummyApp.class);
     ArtifactSummary dummyArtifactSummary = dummyAppManager.getInfo().getArtifact();
     ArtifactId dummyArtifact = AUTH_NAMESPACE.artifact(dummyArtifactSummary.getName(),
                                                                  dummyArtifactSummary.getVersion());
     ApplicationId appId = AUTH_NAMESPACE.app(DummyApp.class.getSimpleName());
     final ProgramId serviceId = appId.service(DummyApp.Greeting.SERVICE_NAME);
+    DatasetId dsId = AUTH_NAMESPACE.dataset("whom");
     Assert.assertEquals(
       ImmutableSet.of(
         new Privilege(instance, Action.ADMIN),
         new Privilege(AUTH_NAMESPACE, Action.ALL),
         new Privilege(dummyArtifact, Action.ALL),
         new Privilege(appId, Action.ALL),
-        new Privilege(serviceId, Action.ALL)
+        new Privilege(serviceId, Action.ALL),
+        new Privilege(dsId, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
@@ -547,14 +547,75 @@ public class AuthorizationTest extends TestBase {
       ImmutableSet.of(
         new Privilege(instance, Action.ADMIN),
         new Privilege(AUTH_NAMESPACE, Action.ALL),
-        new Privilege(dummyArtifact, Action.ALL)
+        new Privilege(dummyArtifact, Action.ALL),
+        new Privilege(dsId, Action.ALL)
       ),
       authorizer.listPrivileges(ALICE)
     );
+  }
+
+  @Test
+  public void testDatasets() throws Exception {
+    createAuthNamespace();
+    final DatasetId mydsId = AUTH_NAMESPACE.dataset("myds");
+    final DatasetId mydsId1 = AUTH_NAMESPACE.dataset("myds1");
+    final DatasetId mydsId2 = AUTH_NAMESPACE.dataset("myds2");
+    // grant alice write access to the namespace
+    grantAndAssertSuccess(AUTH_NAMESPACE, ALICE, ImmutableSet.of(Action.WRITE));
+    addDatasetInstance(AUTH_NAMESPACE.toId(), Table.class.getName(), "myds");
+    // should be able to get
+    final DataSetManager<Table> myds = getDataset(AUTH_NAMESPACE.toId(), "myds");
+    Table table = myds.get();
+    table.put(Bytes.toBytes("row"), Bytes.toBytes("column"), Bytes.toBytes("value"));
+    myds.flush();
+    SecurityRequestContext.setUserId(BOB.getName());
+    assertAuthorizationFailure(new UnauthorizedOperationExecutor() {
+      @Override
+      public void execute() throws Exception {
+        addDatasetInstance(AUTH_NAMESPACE.toId(), Table.class.getName(), "myds");
+      }
+    }, String.format("Expected %s to not be have %s privilege on %s.", BOB, Action.WRITE, AUTH_NAMESPACE));
+    assertAuthorizationFailure(new UnauthorizedOperationExecutor() {
+      @Override
+      public void execute() throws Exception {
+        getDataset(AUTH_NAMESPACE.toId(), "myds");
+      }
+    }, String.format("Expected %s to not be have %s privilege on %s.", BOB, Action.READ, mydsId));
+    SecurityRequestContext.setUserId(ALICE.getName());
+    revokeAndAssertSuccess(mydsId, ALICE, EnumSet.allOf(Action.class));
+    assertAuthorizationFailure(new UnauthorizedOperationExecutor() {
+      @Override
+      public void execute() throws Exception {
+        removeDatasetInstance(mydsId);
+      }
+    }, String.format("Expected %s to not be have %s on %s.", ALICE, Action.ADMIN, mydsId));
+    grantAndAssertSuccess(mydsId, ALICE, ImmutableSet.of(Action.ADMIN));
+    addDatasetInstance(AUTH_NAMESPACE.toId(), KeyValueTable.class.getName(), "myds1");
+    addDatasetInstance(AUTH_NAMESPACE.toId(), Table.class.getName(), "myds2");
+    grantAndAssertSuccess(mydsId1, BOB, ImmutableSet.of(Action.ADMIN));
+    SecurityRequestContext.setUserId(BOB.getName());
+    getDataset(AUTH_NAMESPACE.toId(), "myds1");
+    assertAuthorizationFailure(new UnauthorizedOperationExecutor() {
+      @Override
+      public void execute() throws Exception {
+        getDataset(AUTH_NAMESPACE.toId(), "myds2");
+      }
+    }, String.format("Expected %s to not have access to %s.", BOB, mydsId2));
+    Assert.assertEquals(ImmutableList.of(mydsId1), listDatasets(AUTH_NAMESPACE));
+    removeDatasetInstance(mydsId1);
+    SecurityRequestContext.setUserId(ALICE.getName());
+    removeDatasetInstance(mydsId);
+    removeDatasetInstance(mydsId2);
+  }
+
+  @After
+  public void cleanupTest() throws Exception {
+    Authorizer authorizer = getAuthorizer();
+    // clean up. remove the namespace. all privileges on the namespace should be revoked
     getNamespaceAdmin().delete(AUTH_NAMESPACE.toId());
-    // revoke alice's ADMIN privilege on the instance, so we get back to the same state as at the beginning of the test
-    authorizer.revoke(instance);
-    Assert.assertEquals(ImmutableSet.of(), authorizer.listPrivileges(ALICE));
+    Assert.assertEquals(ImmutableSet.of(new Privilege(instance, Action.ADMIN)), authorizer.listPrivileges(ALICE));
+    // revoke privileges on the instance
+    revokeAndAssertSuccess(instance);
   }
 
   @AfterClass
@@ -563,5 +624,68 @@ public class AuthorizationTest extends TestBase {
     // on default namespace in TestBase so it can clean the namespace.
     SecurityRequestContext.setUserId(OLD_USER);
     finish();
+  }
+
+  private void createAuthNamespace() throws Exception {
+    Authorizer authorizer = getAuthorizer();
+    grantAndAssertSuccess(instance, ALICE, ImmutableSet.of(Action.ADMIN));
+    getNamespaceAdmin().create(AUTH_NAMESPACE_META);
+    Assert.assertEquals(
+      ImmutableSet.of(new Privilege(instance, Action.ADMIN), new Privilege(AUTH_NAMESPACE, Action.ALL)),
+      authorizer.listPrivileges(ALICE)
+    );
+  }
+
+  private void assertAuthorizationFailure(UnauthorizedOperationExecutor operation, String failureMsg) throws Exception {
+    try {
+      operation.execute();
+      Assert.fail(failureMsg);
+    } catch (UnauthorizedException expected) {
+      // expected
+    } catch (DatasetManagementException e) {
+      // sigh! no other way to detect errors from DatasetServiceClient
+      Assert.assertTrue(e.getMessage().contains("Response code: 403, message: 'Forbidden'"));
+    }
+  }
+
+  private void grantAndAssertSuccess(EntityId entityId, Principal principal, Set<Action> actions) throws Exception {
+    Authorizer authorizer = getAuthorizer();
+    Set<Privilege> existingPrivileges = authorizer.listPrivileges(principal);
+    authorizer.grant(entityId, principal, actions);
+    ImmutableSet.Builder<Privilege> expectedPrivilegesAfterGrant = ImmutableSet.builder();
+    for (Action action : actions) {
+      expectedPrivilegesAfterGrant.add(new Privilege(entityId, action));
+    }
+    Assert.assertEquals(Sets.union(existingPrivileges, expectedPrivilegesAfterGrant.build()),
+                        authorizer.listPrivileges(principal));
+  }
+
+  private void revokeAndAssertSuccess(EntityId entityId, Principal principal, Set<Action> actions) throws Exception {
+    Authorizer authorizer = getAuthorizer();
+    Set<Privilege> existingPrivileges = authorizer.listPrivileges(principal);
+    authorizer.revoke(entityId, principal, actions);
+    ImmutableSet.Builder<Privilege> expectedPrivilegesAfterRevoke = ImmutableSet.builder();
+    for (Action action : actions) {
+      expectedPrivilegesAfterRevoke.add(new Privilege(entityId, action));
+    }
+    Assert.assertEquals(Sets.difference(existingPrivileges, expectedPrivilegesAfterRevoke.build()),
+                        authorizer.listPrivileges(principal));
+  }
+
+  private void revokeAndAssertSuccess(final EntityId entityId) throws Exception {
+    Authorizer authorizer = getAuthorizer();
+    authorizer.revoke(entityId);
+    Predicate<Privilege> entityFilter = new Predicate<Privilege>() {
+      @Override
+      public boolean apply(Privilege input) {
+        return entityId.equals(input.getEntity());
+      }
+    };
+    Assert.assertTrue(Sets.filter(authorizer.listPrivileges(ALICE), entityFilter).isEmpty());
+    Assert.assertTrue(Sets.filter(authorizer.listPrivileges(BOB), entityFilter).isEmpty());
+  }
+
+  private interface UnauthorizedOperationExecutor {
+    void execute() throws Exception;
   }
 }

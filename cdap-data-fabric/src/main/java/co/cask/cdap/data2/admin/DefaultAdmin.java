@@ -14,7 +14,7 @@
  * the License.
  */
 
-package co.cask.cdap.internal.app.runtime;
+package co.cask.cdap.data2.admin;
 
 import co.cask.cdap.api.Admin;
 import co.cask.cdap.api.dataset.DatasetManagementException;

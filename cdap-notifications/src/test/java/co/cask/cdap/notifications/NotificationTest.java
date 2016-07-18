@@ -31,6 +31,7 @@ import co.cask.cdap.data.runtime.DataSetsModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
 import co.cask.cdap.data2.dataset2.DatasetFramework;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
 import co.cask.cdap.notifications.feeds.NotificationFeedManager;
@@ -41,6 +42,8 @@ import co.cask.cdap.notifications.service.NotificationService;
 import co.cask.cdap.notifications.service.TxRetryPolicy;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.tephra.TransactionContext;
@@ -109,7 +112,10 @@ public abstract class NotificationTest {
       new MetricsClientRuntimeModule().getInMemoryModules(),
       new ExploreClientModule(),
       new DataFabricModules().getInMemoryModules(),
-      new NamespaceStoreModule().getInMemoryModules()
+      new NamespaceStoreModule().getInMemoryModules(),
+      new AuthenticationContextModules().getHttpModule(),
+      new AuthorizationModule(),
+      new AuthorizationEnforcementModule().getInMemoryModules()
     );
   }
 

@@ -26,7 +26,6 @@ import co.cask.cdap.common.DatasetTypeNotFoundException;
 import co.cask.cdap.common.HandlerException;
 import co.cask.cdap.common.NamespaceNotFoundException;
 import co.cask.cdap.common.NotFoundException;
-import co.cask.cdap.common.conf.CConfiguration;
 import co.cask.cdap.data2.audit.AuditPublisher;
 import co.cask.cdap.data2.audit.AuditPublishers;
 import co.cask.cdap.data2.datafabric.dataset.DatasetsUtil;
@@ -41,10 +40,25 @@ import co.cask.cdap.proto.DatasetTypeMeta;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.audit.AuditPayload;
 import co.cask.cdap.proto.audit.AuditType;
+import co.cask.cdap.proto.id.DatasetId;
+import co.cask.cdap.proto.id.EntityId;
+import co.cask.cdap.proto.security.Action;
+import co.cask.cdap.proto.security.Principal;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
+import co.cask.cdap.security.authorization.AuthorizerInstantiator;
+import co.cask.cdap.security.spi.authentication.SecurityRequestContext;
+import co.cask.cdap.security.spi.authorization.UnauthorizedException;
 import co.cask.cdap.store.NamespaceStore;
+import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Collections2;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
@@ -54,6 +68,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import javax.annotation.Nullable;
 
@@ -68,16 +83,17 @@ public class DatasetInstanceService {
   private final DatasetOpExecutor opExecutorClient;
   private final ExploreFacade exploreFacade;
   private final NamespaceStore nsStore;
+  private final LoadingCache<Id.DatasetInstance, DatasetMeta> metaCache;
+  private final AuthorizationEnforcementService authorizationEnforcementService;
+  private final AuthorizerInstantiator authorizerInstantiator;
 
   private AuditPublisher auditPublisher;
 
-  private final LoadingCache<Id.DatasetInstance, DatasetMeta> metaCache;
-
-
   @Inject
   public DatasetInstanceService(DatasetTypeManager typeManager, DatasetInstanceManager instanceManager,
-                                DatasetOpExecutor opExecutorClient, ExploreFacade exploreFacade, CConfiguration conf,
-                                NamespaceStore nsStore) {
+                                DatasetOpExecutor opExecutorClient, ExploreFacade exploreFacade, NamespaceStore nsStore,
+                                AuthorizationEnforcementService authorizationEnforcementService,
+                                AuthorizerInstantiator authorizerInstantiator) {
     this.opExecutorClient = opExecutorClient;
     this.typeManager = typeManager;
     this.instanceManager = instanceManager;
@@ -86,11 +102,13 @@ public class DatasetInstanceService {
     this.metaCache = CacheBuilder.newBuilder().build(
       new CacheLoader<Id.DatasetInstance, DatasetMeta>() {
         @Override
-        public DatasetMeta load(Id.DatasetInstance datasetId) throws Exception {
+        public DatasetMeta load(@SuppressWarnings("NullableProblems") Id.DatasetInstance datasetId) throws Exception {
           return getFromMds(datasetId);
         }
       }
     );
+    this.authorizationEnforcementService = authorizationEnforcementService;
+    this.authorizerInstantiator = authorizerInstantiator;
   }
 
   @SuppressWarnings("unused")
@@ -107,10 +125,29 @@ public class DatasetInstanceService {
    * @throws NotFoundException if the namespace was not found
    * @throws IOException if there is a problem in making an HTTP request to check if the namespace exists.
    */
-  public Collection<DatasetSpecification> list(Id.Namespace namespace) throws Exception {
+  public Collection<DatasetSpecification> list(final Id.Namespace namespace) throws Exception {
+    Principal principal = SecurityRequestContext.toPrincipal();
     // Throws NamespaceNotFoundException if the namespace does not exist
     ensureNamespaceExists(namespace);
-    return instanceManager.getAll(namespace);
+    Collection<DatasetSpecification> datasets = instanceManager.getAll(namespace);
+    Collection<DatasetId> datasetIds = Collections2.transform(
+      datasets, new Function<DatasetSpecification, DatasetId>() {
+        @Override
+        public DatasetId apply(DatasetSpecification spec) {
+          return namespace.toEntityId().dataset(spec.getName());
+        }
+      });
+    final Set<EntityId> authorized =
+      authorizationEnforcementService.filter(Sets.<EntityId>newHashSet(datasetIds), principal);
+    Iterable<DatasetSpecification> authorizedDatasets =
+      Iterables.filter(datasets, new Predicate<DatasetSpecification>() {
+        @Override
+        public boolean apply(DatasetSpecification datasetSpec) {
+          DatasetId dataset = namespace.toEntityId().dataset(datasetSpec.getName());
+          return authorized.contains(dataset);
+        }
+      });
+    return Lists.newArrayList(authorizedDatasets);
   }
 
   /**
@@ -122,12 +159,38 @@ public class DatasetInstanceService {
    * @throws NotFoundException if either the namespace or dataset instance is not found,
    * @throws IOException if there is a problem in making an HTTP request to check if the namespace exists.
    */
-  public DatasetMeta get(Id.DatasetInstance instance, List<? extends Id> owners) throws Exception {
+  public DatasetMeta get(final Id.DatasetInstance instance, List<? extends Id> owners) throws Exception {
+    // Application Deployment first makes a call to the dataset service to check if the instance already exists with
+    // a different type. To make sure that that call responds with the right exceptions if necessary, first fetch the
+    // meta from the cache and throw appropriate exceptions if necessary.
+    DatasetMeta datasetMeta;
+    try {
+      datasetMeta = metaCache.get(instance);
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if ((cause instanceof Exception) && (cause instanceof HttpErrorStatusProvider)) {
+         throw (Exception) cause;
+      }
+      throw e;
+    }
+    // Only return the above datasetMeta if authorization succeeds
+    Principal principal = SecurityRequestContext.toPrincipal();
+    Set<EntityId> authorized =
+      authorizationEnforcementService.filter(ImmutableSet.<EntityId>of(instance.toEntityId()), principal);
+    if (!Principal.SYSTEM.equals(principal) && authorized.isEmpty()) {
+      throw new UnauthorizedException(principal, instance.toEntityId());
+    }
+//    authorizationEnforcementService.enforce(instance.toEntityId(), principal, Action.READ);
+    return datasetMeta;
+  }
+
+  private DatasetMeta ensureExists(Id.DatasetInstance instance) throws Exception {
     try {
       return metaCache.get(instance);
     } catch (ExecutionException e) {
-      if ((e.getCause() instanceof Exception) && (e.getCause() instanceof HttpErrorStatusProvider)) {
-         throw (Exception) e.getCause();
+      Throwable cause = e.getCause();
+      if ((cause instanceof Exception) && (cause instanceof HttpErrorStatusProvider)) {
+        throw (Exception) cause;
       }
       throw e;
     }
@@ -182,6 +245,8 @@ public class DatasetInstanceService {
   public void create(String namespaceId, String name, DatasetInstanceConfiguration props) throws Exception {
     // Throws NamespaceNotFoundException if the namespace does not exist
     Id.Namespace namespace = ConversionHelpers.toNamespaceId(namespaceId);
+    Principal principal = SecurityRequestContext.toPrincipal();
+    authorizationEnforcementService.enforce(namespace.toEntityId(), principal, Action.WRITE);
     ensureNamespaceExists(namespace);
 
     Id.DatasetInstance newInstance = ConversionHelpers.toDatasetInstanceId(namespaceId, name);
@@ -211,6 +276,9 @@ public class DatasetInstanceService {
 
     // Enable explore
     enableExplore(newInstance, props);
+
+    // grant all privileges on the created dataset
+    authorizerInstantiator.get().grant(newInstance.toEntityId(), principal, ImmutableSet.of(Action.ALL));
   }
 
   /**
@@ -224,6 +292,7 @@ public class DatasetInstanceService {
    * @throws DatasetTypeNotFoundException if the type of the existing dataset was not found
    */
   public void update(Id.DatasetInstance instance, Map<String, String> properties) throws Exception {
+    authorizationEnforcementService.enforce(instance.toEntityId(), SecurityRequestContext.toPrincipal(), Action.ADMIN);
     // Throws NamespaceNotFoundException if the namespace does not exist
     ensureNamespaceExists(instance.getNamespace());
     DatasetSpecification existing = instanceManager.get(instance);
@@ -263,6 +332,7 @@ public class DatasetInstanceService {
    * @throws IOException if there was a problem in checking if the namespace exists over HTTP
    */
   public void drop(Id.DatasetInstance instance) throws Exception {
+    authorizationEnforcementService.enforce(instance.toEntityId(), SecurityRequestContext.toPrincipal(), Action.ADMIN);
     // Throws NamespaceNotFoundException if the namespace does not exist
     ensureNamespaceExists(instance.getNamespace());
     DatasetSpecification spec = instanceManager.get(instance);
@@ -272,6 +342,8 @@ public class DatasetInstanceService {
     LOG.info("Deleting dataset {}.{}", instance.getNamespaceId(), instance.getId());
     dropDataset(instance, spec);
     publishAudit(instance, AuditType.DELETE);
+    // revoke privileges
+    authorizerInstantiator.get().revoke(instance.toEntityId());
   }
 
   /**

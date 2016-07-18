@@ -30,6 +30,7 @@ import co.cask.cdap.data.stream.StreamAdminModules;
 import co.cask.cdap.data.view.ViewAdminModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
 import co.cask.cdap.explore.guice.ExploreRuntimeModule;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
@@ -40,6 +41,8 @@ import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.QueryHandle;
 import co.cask.cdap.proto.QueryResult;
 import co.cask.cdap.proto.QueryStatus;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.cdap.test.SlowTests;
 import co.cask.tephra.TransactionManager;
@@ -97,6 +100,9 @@ public class InMemoryExploreServiceTest {
         new StreamAdminModules().getInMemoryModules(),
         new NamespaceClientRuntimeModule().getInMemoryModules(),
         new NamespaceStoreModule().getStandaloneModules(),
+        new AuthenticationContextModules().getHttpModule(),
+        new AuthorizationModule(),
+        new AuthorizationEnforcementModule().getInMemoryModules(),
         new AbstractModule() {
           @Override
           protected void configure() {

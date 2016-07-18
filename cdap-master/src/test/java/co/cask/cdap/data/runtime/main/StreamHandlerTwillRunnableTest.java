@@ -14,30 +14,19 @@
  * the License.
  */
 
-package co.cask.cdap.internal.app.store.remote;
+package co.cask.cdap.data.runtime.main;
 
-import com.google.gson.JsonElement;
-
-import javax.annotation.Nullable;
+import co.cask.cdap.common.conf.CConfiguration;
+import org.apache.hadoop.conf.Configuration;
+import org.junit.Test;
 
 /**
- * Allows for simple serialization/deserialization of a method argument.
+ * Tests for {@link StreamHandlerRunnable}.
  */
-public final class MethodArgument {
-  private final String type;
-  private final JsonElement value;
+public class StreamHandlerTwillRunnableTest {
 
-  public MethodArgument(String type, JsonElement value) {
-    this.type = type;
-    this.value = value;
-  }
-
-  public String getType() {
-    return type;
-  }
-
-  @Nullable
-  public JsonElement getValue() {
-    return value;
+  @Test
+  public void testInjector() {
+    StreamHandlerRunnable.createInjector(CConfiguration.create(), new Configuration());
   }
 }

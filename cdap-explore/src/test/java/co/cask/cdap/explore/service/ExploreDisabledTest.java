@@ -34,6 +34,7 @@ import co.cask.cdap.data.view.ViewAdminModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
 import co.cask.cdap.data2.dataset2.DatasetFramework;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.client.DiscoveryExploreClient;
 import co.cask.cdap.explore.client.ExploreClient;
 import co.cask.cdap.explore.guice.ExploreClientModule;
@@ -46,6 +47,8 @@ import co.cask.cdap.notifications.feeds.service.NoOpNotificationFeedManager;
 import co.cask.cdap.notifications.guice.NotificationServiceRuntimeModule;
 import co.cask.cdap.proto.Id;
 import co.cask.cdap.proto.NamespaceMeta;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.NamespaceStore;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.tephra.Transaction;
@@ -223,6 +226,9 @@ public class ExploreDisabledTest {
         new StreamAdminModules().getInMemoryModules(),
         new NotificationServiceRuntimeModule().getInMemoryModules(),
         new NamespaceStoreModule().getInMemoryModules(),
+        new AuthenticationContextModules().getHttpModule(),
+        new AuthorizationModule(),
+        new AuthorizationEnforcementModule().getInMemoryModules(),
         new AbstractModule() {
           @Override
           protected void configure() {

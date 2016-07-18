@@ -28,10 +28,12 @@ import co.cask.cdap.data.runtime.DataSetsModules;
 import co.cask.cdap.data2.datafabric.dataset.service.DatasetService;
 import co.cask.cdap.data2.datafabric.dataset.service.executor.DatasetOpExecutor;
 import co.cask.cdap.data2.dataset2.DatasetFramework;
+import co.cask.cdap.data2.security.authorization.AuthorizationModule;
 import co.cask.cdap.explore.guice.ExploreClientModule;
-import co.cask.cdap.internal.TempFolder;
 import co.cask.cdap.internal.app.scheduler.LogPrintingJob;
 import co.cask.cdap.metrics.guice.MetricsClientRuntimeModule;
+import co.cask.cdap.security.auth.context.AuthenticationContextModules;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementModule;
 import co.cask.cdap.store.guice.NamespaceStoreModule;
 import co.cask.cdap.test.SlowTests;
 import co.cask.tephra.TransactionExecutorFactory;
@@ -42,8 +44,10 @@ import com.google.inject.Injector;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.rules.TemporaryFolder;
 import org.quartz.CronScheduleBuilder;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
@@ -70,7 +74,10 @@ import java.util.concurrent.TimeUnit;
 @Category(SlowTests.class)
 public class DatasetBasedTimeScheduleStoreTest {
 
-  private static final TempFolder TEMP_FOLDER = new TempFolder();
+  @ClassRule
+  public static final TemporaryFolder TEMP_FOLDER = new TemporaryFolder();
+
+  private static final String DUMMY_SCHEDULER_NAME = "dummyScheduler";
 
   private static Injector injector;
   private static Scheduler scheduler;
@@ -79,7 +86,6 @@ public class DatasetBasedTimeScheduleStoreTest {
   private static TransactionManager txService;
   private static DatasetOpExecutor dsOpsService;
   private static DatasetService dsService;
-  private static final String DUMMY_SCHEDULER_NAME = "dummyScheduler";
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -93,7 +99,10 @@ public class DatasetBasedTimeScheduleStoreTest {
                                     new DataSetsModules().getStandaloneModules(),
                                     new DataSetServiceModules().getInMemoryModules(),
                                     new ExploreClientModule(),
-                                    new NamespaceStoreModule().getInMemoryModules());
+                                    new NamespaceStoreModule().getInMemoryModules(),
+                                    new AuthenticationContextModules().getHttpModule(),
+                                    new AuthorizationModule(),
+                                    new AuthorizationEnforcementModule().getInMemoryModules());
     txService = injector.getInstance(TransactionManager.class);
     txService.startAndWait();
     dsOpsService = injector.getInstance(DatasetOpExecutor.class);
@@ -273,10 +282,10 @@ public class DatasetBasedTimeScheduleStoreTest {
 
   private Trigger getTrigger(String triggerName) {
     return TriggerBuilder.newTrigger()
-        .withIdentity(triggerName)
-        .startNow()
-        .withSchedule(CronScheduleBuilder.cronSchedule("0 0/5 * * * ?"))
-        .build();
+      .withIdentity(triggerName)
+      .startNow()
+      .withSchedule(CronScheduleBuilder.cronSchedule("0 0/5 * * * ?"))
+      .build();
   }
 
   private JobDetail getJobDetail(String jobName) {
