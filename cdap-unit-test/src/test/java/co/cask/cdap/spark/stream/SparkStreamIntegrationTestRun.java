@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class SparkStreamIntegrationTestRun extends TestFrameworkTestBase {
 
   @Test
-  public void testSparkWithStream() throws mException {
+  public void testSparkWithStream() throws Exception {
     ApplicationManager applicationManager = deployApplication(TestSparkStreamIntegrationApp.class);
     StreamManager streamManager = getStreamManager("testStream");
     for (int i = 0; i < 50; i++) {

@@ -28,6 +28,7 @@ import co.cask.cdap.internal.app.runtime.flow.FlowUtils;
 import co.cask.cdap.internal.app.runtime.plugin.PluginService;
 import co.cask.cdap.internal.app.runtime.schedule.SchedulerService;
 import co.cask.cdap.notifications.service.NotificationService;
+import co.cask.cdap.security.authorization.AuthorizationEnforcementService;
 import co.cask.cdap.security.authorization.AuthorizerInstantiator;
 import co.cask.http.HttpHandler;
 import com.google.inject.Inject;
@@ -65,11 +66,12 @@ public class StandaloneAppFabricServer extends AppFabricServer {
                                    DefaultNamespaceEnsurer defaultNamespaceEnsurer,
                                    MetricStore metricStore,
                                    SystemArtifactLoader systemArtifactLoader,
-                                   PluginService pluginService) {
+                                   PluginService pluginService,
+                                   AuthorizationEnforcementService authorizationEnforcementService) {
     super(configuration, discoveryService, schedulerService, notificationService, hostname, handlers,
           metricsCollectionService, programRuntimeService, applicationLifecycleService,
           programLifecycleService, streamCoordinatorClient, servicesNames, handlerHookNames, defaultNamespaceEnsurer,
-          systemArtifactLoader, pluginService);
+          systemArtifactLoader, pluginService, authorizationEnforcementService);
     this.metricStore = metricStore;
   }
 
