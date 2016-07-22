@@ -242,20 +242,6 @@ public abstract class BaseHiveExploreService extends AbstractIdleService impleme
     // Read delegation token if security is enabled.
     if (UserGroupInformation.isSecurityEnabled()) {
       conf.set(HIVE_METASTORE_TOKEN_KEY, HiveAuthFactory.HS2_CLIENT_TOKEN);
-
-      // mapreduce.job.credentials.binary is added by Hive only if Kerberos credentials are present and impersonation
-      // is enabled. However, in our case we don't have Kerberos credentials for Explore service.
-      // Hence it will not be automatically added by Hive, instead we have to add it ourselves.
-      // TODO: When Explore does secure impersonation this has to be the tokens of the user,
-      // TODO: ... and not the tokens of the service itself.
-      String hadoopAuthToken = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-      if (hadoopAuthToken != null) {
-        conf.set("mapreduce.job.credentials.binary", hadoopAuthToken);
-        if ("tez".equals(conf.get("hive.execution.engine"))) {
-          // Add token file location property for tez if engine is tez
-          conf.set("tez.credentials.path", hadoopAuthToken);
-        }
-      }
     }
 
     // Since we use delegation token in HIVE, unset the SPNEGO authentication if it is
@@ -1233,8 +1219,6 @@ public abstract class BaseHiveExploreService extends AbstractIdleService impleme
       // make sure RM does not cancel delegation tokens after the query is run
       sessionConf.put("mapreduce.job.complete.cancel.delegation.tokens", "false");
       sessionConf.put("spark.hadoop.mapreduce.job.complete.cancel.delegation.tokens", "false");
-      // refresh delegations for the job - TWILL-170
-      updateTokenStore();
     }
 
     if (additionalSessionConf != null) {
@@ -1242,37 +1226,6 @@ public abstract class BaseHiveExploreService extends AbstractIdleService impleme
     }
 
     return sessionConf;
-  }
-
-  /**
-   * Updates the token store to be used for the hive job, based upon the Explore container's credentials.
-   * This is because twill doesn't update the container_tokens on upon token refresh.
-   * See: https://issues.apache.org/jira/browse/TWILL-170
-   */
-  private void updateTokenStore() throws IOException, ExploreException {
-    String hadoopTokenFileLocation = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-    if (hadoopTokenFileLocation == null) {
-      LOG.warn("Skipping update of token store due to failure to find environment variable '{}'.",
-               UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
-      return;
-    }
-
-    Path credentialsFile = Paths.get(hadoopTokenFileLocation);
-
-    FileAttribute<Set<PosixFilePermission>> originalPermissionAttributes =
-      PosixFilePermissions.asFileAttribute(Files.getPosixFilePermissions(credentialsFile));
-
-    Path tmpFile = Files.createTempFile(credentialsFile.getParent(), "credentials.store", null,
-                                        originalPermissionAttributes);
-    LOG.debug("Writing to temporary file: {}", tmpFile);
-
-    try (DataOutputStream os = new DataOutputStream(Files.newOutputStream(tmpFile))) {
-      Credentials credentials = UserGroupInformation.getCurrentUser().getCredentials();
-      credentials.writeTokenStorageToStream(os);
-    }
-
-    Files.move(tmpFile, credentialsFile, StandardCopyOption.ATOMIC_MOVE);
-    LOG.debug("Secure store saved to {}", credentialsFile);
   }
 
   protected QueryHandle getQueryHandle(Map<String, String> sessionConf) throws HandleNotFoundException {
