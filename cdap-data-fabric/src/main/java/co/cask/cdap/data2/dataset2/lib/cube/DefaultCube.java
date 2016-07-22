@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Cask Data, Inc.
+ * Copyright 2015-2016 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -16,6 +16,8 @@
 
 package co.cask.cdap.data2.dataset2.lib.cube;
 
+import co.cask.cdap.api.annotation.ReadOnly;
+import co.cask.cdap.api.annotation.WriteOnly;
 import co.cask.cdap.api.dataset.lib.cube.AggregationFunction;
 import co.cask.cdap.api.dataset.lib.cube.Cube;
 import co.cask.cdap.api.dataset.lib.cube.CubeDeleteQuery;
@@ -25,6 +27,7 @@ import co.cask.cdap.api.dataset.lib.cube.CubeQuery;
 import co.cask.cdap.api.dataset.lib.cube.DimensionValue;
 import co.cask.cdap.api.dataset.lib.cube.TimeSeries;
 import co.cask.cdap.api.dataset.lib.cube.TimeValue;
+import co.cask.cdap.api.dataset.metrics.MeteredDataset;
 import co.cask.cdap.api.metrics.MetricsCollector;
 import co.cask.cdap.common.utils.ImmutablePair;
 import co.cask.cdap.data2.dataset2.lib.timeseries.Fact;
@@ -56,7 +59,7 @@ import javax.annotation.Nullable;
 /**
  * Default implementation of {@link co.cask.cdap.api.dataset.lib.cube.Cube}.
  */
-public class DefaultCube implements Cube {
+public class DefaultCube implements Cube, MeteredDataset {
   private static final Logger LOG = LoggerFactory.getLogger(DefaultCube.class);
 
   private static final DimensionValueComparator DIMENSION_VALUE_COMPARATOR = new DimensionValueComparator();
@@ -81,11 +84,13 @@ public class DefaultCube implements Cube {
     this.aggregationAliasMap = aggregationAliasMap;
   }
 
+  @WriteOnly
   @Override
   public void add(CubeFact fact) {
     add(ImmutableList.of(fact));
   }
 
+  @WriteOnly
   @Override
   public void add(Collection<? extends CubeFact> facts) {
     List<Fact> toWrite = Lists.newArrayList();
@@ -123,6 +128,7 @@ public class DefaultCube implements Cube {
     incrementMetric("cube.tsFact.added.count", toWrite.size() * resolutionToFactTable.size());
   }
 
+  @ReadOnly
   @Override
   public Collection<TimeSeries> query(CubeQuery query) {
     /*
@@ -220,6 +226,7 @@ public class DefaultCube implements Cube {
     return timeSeries;
   }
 
+  @WriteOnly
   @Override
   public void delete(CubeDeleteQuery query) {
     //this may be very inefficient and its better to use TTL, this is to only support existing old functionality.
@@ -239,6 +246,7 @@ public class DefaultCube implements Cube {
     }
   }
 
+  @ReadOnly
   @Override
   public Collection<DimensionValue> findDimensionValues(CubeExploreQuery query) {
     LOG.trace("Searching for next-level context, query: {}", query);
@@ -266,6 +274,7 @@ public class DefaultCube implements Cube {
     return result;
   }
 
+  @ReadOnly
   @Override
   public Collection<String> findMeasureNames(CubeExploreQuery query) {
     LOG.trace("Searching for measures, query: {}", query);
@@ -294,6 +303,7 @@ public class DefaultCube implements Cube {
    * Sets {@link MetricsCollector} for metrics reporting.
    * @param metrics {@link MetricsCollector} to set.
    */
+  @Override
   public void setMetricsCollector(MetricsCollector metrics) {
     this.metrics = metrics;
     for (FactTable factTable : resolutionToFactTable.values()) {
@@ -307,6 +317,7 @@ public class DefaultCube implements Cube {
     }
   }
 
+  @ReadOnly
   @Nullable
   private ImmutablePair<String, Aggregation> findAggregation(CubeQuery query) {
     ImmutablePair<String, Aggregation> currentBest = null;
@@ -430,6 +441,7 @@ public class DefaultCube implements Cube {
     return result;
   }
 
+  @WriteOnly
   @Override
   public void write(Object ignored, CubeFact cubeFact) {
     add(cubeFact);

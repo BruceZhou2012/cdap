@@ -16,6 +16,10 @@
 
 package co.cask.cdap.data2.dataset2.lib.table;
 
+import co.cask.cdap.api.annotation.NoAccess;
+import co.cask.cdap.api.annotation.ReadOnly;
+import co.cask.cdap.api.annotation.ReadWrite;
+import co.cask.cdap.api.annotation.WriteOnly;
 import co.cask.cdap.api.common.Bytes;
 import co.cask.cdap.api.data.batch.Split;
 import co.cask.cdap.api.dataset.DataSetException;
@@ -35,6 +39,7 @@ import co.cask.tephra.Transaction;
 import co.cask.tephra.TransactionAware;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.slf4j.Logger;
@@ -149,6 +154,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
   /**
    * @return name of this table
    */
+  @NoAccess
   public String getTableName() {
     return name;
   }
@@ -164,6 +170,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    *
    * @return transaction change prefix
    */
+  @NoAccess
   public byte[] getNameAsTxChangePrefix() {
     return this.nameAsTxChangePrefix;
   }
@@ -235,6 +242,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    * @return list of rows, one for each get
    * @throws Exception
    */
+  @ReadOnly
   protected List<Map<byte[], byte[]>> getPersisted(List<Get> gets) throws Exception {
     List<Map<byte[], byte[]>> results = Lists.newArrayListWithCapacity(gets.size());
     for (Get get : gets) {
@@ -367,6 +375,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    *       efficient than calling same method with columns as parameters because it may always require round trip to
    *       persistent store
    */
+  @ReadOnly
   @Override
   public Row get(byte[] row) {
     reportRead(1);
@@ -378,6 +387,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     }
   }
 
+  @ReadOnly
   @Override
   public Row get(byte[] row, byte[][] columns) {
     reportRead(1);
@@ -389,6 +399,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     }
   }
 
+  @ReadOnly
   @Override
   public Row get(byte[] row, byte[] startColumn, byte[] stopColumn, int limit) {
     reportRead(1);
@@ -420,6 +431,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     }
   }
 
+  @ReadOnly
   @Override
   public List<Row> get(List<Get> gets) {
     try {
@@ -466,6 +478,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    *
    * Also see {@link co.cask.cdap.api.dataset.table.Table#put(byte[], byte[][], byte[][])}.
    */
+  @WriteOnly
   @Override
   public void put(byte[] row, byte[][] columns, byte[][] values) {
     putInternal(row, columns, values);
@@ -498,6 +511,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    * NOTE: Depending on the use-case, calling this method may be much less efficient than calling same method
    *       with columns as parameters because it will require a round trip to persistent store.
    */
+  @WriteOnly
   @Override
   public void delete(byte[] row) {
     // this is going to be expensive, but the only we can do as delete implementation act on per-column level
@@ -512,6 +526,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     }
   }
 
+  @WriteOnly
   @Override
   public void delete(byte[] row, byte[][] columns) {
     if (columns == null) {
@@ -531,8 +546,13 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     reportWrite(1, 0);
   }
 
+  @ReadWrite
   @Override
   public Row incrementAndGet(byte[] row, byte[][] columns, long[] amounts) {
+    return internalIncrementAndGet(row, columns, amounts);
+  }
+
+  protected Row internalIncrementAndGet(byte[] row, byte[][] columns, long[] amounts) {
     // Logic:
     // * fetching current values
     // * updating values
@@ -578,6 +598,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     return new Result(row, result);
   }
 
+  @WriteOnly
   @Override
   public void increment(byte[] row, byte[][] columns, long[] amounts) {
     if (enableReadlessIncrements) {
@@ -591,10 +612,11 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
       }
       reportWrite(1, getSize(row) + getSize(columns) + getSize(amounts));
     } else {
-      incrementAndGet(row, columns, amounts);
+      internalIncrementAndGet(row, columns, amounts);
     }
   }
 
+  @ReadWrite
   @Override
   public boolean compareAndSwap(byte[] row, byte[] column, byte[] expectedValue, byte[] newValue) {
     // TODO: add support for empty values; see https://issues.cask.co/browse/TEPHRA-45 for details.
@@ -630,6 +652,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
    * @param stop If non-null, the returned splits will only cover keys that are less.
    * @return list of {@link Split}
    */
+  @ReadOnly
   @Override
   public List<Split> getSplits(int numSplits, byte[] start, byte[] stop) {
     List<KeyRange> keyRanges = SplitsUtil.primitiveGetSplits(numSplits, start, stop);
@@ -643,11 +666,13 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     });
   }
 
+  @ReadOnly
   @Override
   public Scanner scan(byte[] startRow, byte[] stopRow) {
     return scan(new Scan(startRow, stopRow));
   }
 
+  @ReadOnly
   @Override
   public Scanner scan(Scan scan) {
     NavigableMap<byte[], NavigableMap<byte[], Update>> bufferMap = scanBuffer(scan);
@@ -876,6 +901,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     return result;
   }
 
+  @NoAccess
   private void reportWrite(int numOps, int dataSize) {
     if (metricsCollector != null) {
       metricsCollector.increment(Constants.Metrics.Name.Dataset.WRITE_COUNT, numOps);
@@ -884,6 +910,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     }
   }
 
+  @NoAccess
   private void reportRead(int numOps) {
     if (metricsCollector != null) {
       // todo: report amount of data being read
@@ -913,6 +940,36 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
     return bytes == null ? null : Arrays.copyOf(bytes, bytes.length);
   }
 
+  // Following functions are to assist scanner implementation with authorization, hence even they are private method
+  // they get annotated
+
+  @ReadOnly
+  private Iterator<byte[]> getBufferKeyIterator(NavigableMap<byte[], NavigableMap<byte[], Update>> buffer) {
+    final Iterator<byte[]> iterator = buffer.keySet().iterator();
+    return new AbstractIterator<byte[]>() {
+      @Override
+      protected byte[] computeNext() {
+        return BufferingTable.this.hasNext(iterator) ? BufferingTable.this.next(iterator) : endOfData();
+      }
+    };
+  }
+
+  @ReadOnly
+  private <T> boolean hasNext(Iterator<T> iterator) {
+    return iterator.hasNext();
+  }
+
+  @ReadOnly
+  private <T> T next(Iterator<T> iterator) {
+    return iterator.next();
+  }
+
+  @ReadOnly
+  private NavigableMap<byte[], Update> getFromBuffer(NavigableMap<byte[], NavigableMap<byte[], Update>> buffer,
+                                                     byte[] key) {
+    return buffer.get(key);
+  }
+
   /**
    * Scanner implementation that overlays buffered data on top of already persisted data.
    */
@@ -925,7 +982,7 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
 
     private BufferingScanner(NavigableMap<byte[], NavigableMap<byte[], Update>> buffer, Scanner persistedScanner) {
       this.buffer = buffer;
-      this.keyIter = this.buffer.keySet().iterator();
+      this.keyIter = getBufferKeyIterator(buffer);
       if (this.keyIter.hasNext()) {
         currentKey = keyIter.next();
       }
@@ -960,14 +1017,14 @@ public abstract class BufferingTable extends AbstractTable implements MeteredDat
       } else if (order < 0) {
         // buffer row comes first or persisted scanner is empty
         Map<byte[], byte[]> persistedRow = Maps.newTreeMap(Bytes.BYTES_COMPARATOR);
-        mergeToPersisted(persistedRow, buffer.get(currentKey), null);
+        mergeToPersisted(persistedRow, getFromBuffer(buffer, currentKey), null);
         result = new Result(copy(currentKey), persistedRow);
 
         currentKey = keyIter.hasNext() ? keyIter.next() : null;
       } else {
         // if currentKey and currentRow are equal, merge and advance both
         Map<byte[], byte[]> persisted = currentRow.getColumns();
-        mergeToPersisted(persisted, buffer.get(currentKey), null);
+        mergeToPersisted(persisted, getFromBuffer(buffer, currentKey), null);
         result = new Result(currentRow.getRow(), persisted);
 
         currentRow = persistedScanner.next();

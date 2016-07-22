@@ -16,6 +16,7 @@
 
 package co.cask.cdap.api.dataset.lib;
 
+import co.cask.cdap.api.annotation.NoAccess;
 import co.cask.cdap.api.dataset.Dataset;
 import co.cask.cdap.api.dataset.metrics.MeteredDataset;
 import co.cask.cdap.api.metrics.MetricsCollector;
@@ -62,7 +63,6 @@ public abstract class AbstractDataset implements Dataset, MeteredDataset, Transa
   }
 
   // metering stuff
-
   @Override
   public void setMetricsCollector(MetricsCollector metricsCollector) {
     for (Dataset dataset : underlying) {
@@ -73,7 +73,6 @@ public abstract class AbstractDataset implements Dataset, MeteredDataset, Transa
   }
 
   // transaction stuff
-
   @Override
   public void startTx(Transaction tx) {
     txAwares.startTx(tx);
@@ -109,6 +108,7 @@ public abstract class AbstractDataset implements Dataset, MeteredDataset, Transa
     return instanceName;
   }
 
+  @NoAccess
   protected String getName() {
     return instanceName;
   }
