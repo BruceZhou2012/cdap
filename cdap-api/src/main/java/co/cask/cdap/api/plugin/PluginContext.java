@@ -57,6 +57,7 @@ public interface PluginContext {
    * with Java's default values based on the property's type at configuration time. The default values are:
    *  - boolean: false
    *  - byte: 0
+   *  - char: '\u0000'
    *  - double: 0.0d
    *  - float: 0.0f
    *  - int: 0
