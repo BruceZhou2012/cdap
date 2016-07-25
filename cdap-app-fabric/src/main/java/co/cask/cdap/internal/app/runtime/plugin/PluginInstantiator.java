@@ -432,8 +432,8 @@ public class PluginInstantiator implements Closeable {
       }
 
       if (Character.class.equals(rawType)) {
-        if (value.length() > 1) {
-          throw new InvalidPluginConfigException(String.format("Property of type char has length > 1: '%s'", value));
+        if (value.length() != 1) {
+          throw new InvalidPluginConfigException(String.format("Property of type char is not length 1: '%s'", value));
         } else {
           return value.charAt(0);
         }
