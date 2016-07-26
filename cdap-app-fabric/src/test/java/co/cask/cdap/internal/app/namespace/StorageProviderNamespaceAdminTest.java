@@ -113,9 +113,19 @@ public class StorageProviderNamespaceAdminTest {
 
     // create the custom location
     File custom = TEMP_FOLDER.newFolder(customSpace.getNamespace());
+    // create some directories and files inside the lo
+    File dir1 = new File(custom, "dir1");
+    Assert.assertTrue(dir1.mkdir());
+    File dir2 = new File(custom, "dir2");
+    Assert.assertTrue(dir2.mkdir());
+    File file1 = new File(dir1, "file1");
+    Assert.assertTrue(file1.createNewFile());
     storageProviderNamespaceAdmin.create(customSpaceMeta);
     storageProviderNamespaceAdmin.delete(customSpace);
     namespaceStore.delete(customSpace.toId());
+    // the data inside the custom location should have been deleted
+    Assert.assertFalse("Data inside the custom location still exists.", (dir1.exists() || dir2.exists() ||
+      file1.exists()));
     // custom namespace location should still exists
     Assert.assertTrue(custom.exists());
     custom.delete();
