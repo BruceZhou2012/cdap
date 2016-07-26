@@ -129,7 +129,8 @@ public class TransformRunner<KEY, VALUE> {
     Set<StageInfo> reducers = pipelinePhase.getStagesOfType(BatchAggregator.PLUGIN_TYPE, BatchJoiner.PLUGIN_TYPE);
     if (!reducers.isEmpty()) {
       String reducerName = reducers.iterator().next().getName();
-      if (pipelinePhase.getSinks().contains(reducerName)) {
+      JobContext hadoopContext = context.getHadoopContext();
+      if (pipelinePhase.getSinks().contains(reducerName) || hadoopContext instanceof Mapper.Context) {
         return new SingleOutputWriter<>(context);
       }
     }
