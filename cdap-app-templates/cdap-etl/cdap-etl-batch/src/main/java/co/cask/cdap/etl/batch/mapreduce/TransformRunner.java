@@ -127,12 +127,9 @@ public class TransformRunner<KEY, VALUE> {
                                                      PipelinePhase pipelinePhase,
                                                      Configuration hConf) {
     Set<StageInfo> reducers = pipelinePhase.getStagesOfType(BatchAggregator.PLUGIN_TYPE, BatchJoiner.PLUGIN_TYPE);
-    if (!reducers.isEmpty()) {
-      String reducerName = reducers.iterator().next().getName();
-      JobContext hadoopContext = context.getHadoopContext();
-      if (pipelinePhase.getSinks().contains(reducerName) || hadoopContext instanceof Mapper.Context) {
+    JobContext hadoopContext = context.getHadoopContext();
+    if (!reducers.isEmpty() && hadoopContext instanceof Mapper.Context) {
         return new SingleOutputWriter<>(context);
-      }
     }
 
     String sinkOutputsStr = hConf.get(ETLMapReduce.SINK_OUTPUTS_KEY);
